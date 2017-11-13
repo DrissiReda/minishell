@@ -1,3 +1,4 @@
+HEADERS = 
 DERS = 
 OBJECTS = test.o
 
@@ -6,7 +7,7 @@ default: test
 %.o: %.c $(HEADERS)
 	gcc -c $< -o $@
 
-program: $(OBJECTS)
+test: $(OBJECTS)
 	gcc $(OBJECTS) -o $@
 
 clean:
