@@ -1,0 +1,23 @@
+Niveau 1 :
+
+	Avec gdb on peut avoir le contenu de la première adresse avec :
+		b main
+		p secret
+	Pour avoir le contenu de la première case on peut utiliser :
+		p (char)secret
+	puis on itère case par case jusqu'au '\000' et on trouve :
+	"l33th4x0r"
+Niveau 2 :
+	Avec gdb encore :
+		on utilise x/s &secret et on trouve : "\001\002\003\004"
+Niveau 3 :
+	9. Dynamiquement
+   10. libc.so.6
+   12.  Génére une librairie partagée.
+   13. 	fPIC fait en sorte que le code fonctionne indépendemment de sa position dans la 
+   		mémoire. Donc par exemple le code assembleur généré sera relatif (notamment pour
+   		les jumps). 
+   14. le mot de passe est : joshua.
+Niveau 4 :
+	15. Après les variables locales dans le stack.
+	
