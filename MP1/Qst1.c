@@ -10,7 +10,7 @@
 #define MAX 10000
 extern int errno;
 //TODO implement special args array where pipes and redirections are stored
-//TODO fix print flush error (works on correctly on gdb but not on stdout)
+//TODO fix print flush error (works on correctly on gdb but not on stdout) : fixed
 //TODO implement last command entry with '\033' '[' 'A/B/C/D'
 char** parse(char* buff,int* size,int* flag)
 {
@@ -187,7 +187,7 @@ int main(int argc,char* argv[])
                 break;
             case 0 :
                 def_cmd(args,&args_size);
-            case 1 :
+            default :
             	if(!flag)
                 	waitpid(pid,NULL,WUNTRACED);
                 //printf("%s %%",cwd);
