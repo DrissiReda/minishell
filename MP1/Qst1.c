@@ -14,24 +14,35 @@ extern int errno;
 //TODO implement last command entry with '\033' '[' 'A/B/C/D'
 char** parse(char* buff,int* size,int* flag)
 {
-    char* res;  
+    char* res;
     int i=0;
     char** ret=(char**)malloc(sizeof(char*)*MAX);
     while(res=strsep(&buff," "))
     {
-    	if(res[0]=='&')  // background
-        {	
-        	*flag=1;
-        	 continue;
-        }
-        ret[i]=malloc(strlen(res)+1);
-        strcpy(ret[i],res);
-        
+            switch(res[0])
+            {
+            case '&' : // background
+                *flag=1;
+                continue;
+            case '~':  // home variable
+                ret[i]=malloc(strlen(getenv("HOME")+1));
+                strcpy(ret[i],getenv("HOME"));
+                break;
+            case '$': //env variable
+                ret[i]=malloc(strlen(getenv(res+1)+1));
+                strcpy(ret[i],getenv(res+1));
+                break;
+            default :
+                ret[i]=malloc(strlen(res)+1);
+                strcpy(ret[i],res);
+                break;
+            }
+
         i++;
     }
     *size=i;
     if(i>0 && !strcmp(ret[i-1],""))
-    	ret[i-1]=NULL;
+        ret[i-1]=NULL;
     return ret;
 }
 void cd(char* dir)
@@ -61,45 +72,47 @@ void def_cmd(char** args,int* size)
     {
         switch(args[i][0])
         {
-            case '<' :
-                if((fd=open(args[i+1], O_RDONLY)) < 0)
-                {
-                    perror(args[i+1]);
-                    exit(1);
-                }
+        case '<' :
+            if((fd=open(args[i+1], O_RDONLY)) < 0)
+            {
                 perror(args[i+1]);
-                errno=0;
-                if(fd)
-                {
-                    dup2(fd,0);
-                    close(fd);
-                }
-                break;
-            case '>' :
-                 if((fd=open(args[i+1], O_WRONLY)) < 0)
-                {
-                    perror(args[i+1]);
-                    exit(1);
-                }
-                 if(fd!=1)
-                {
-                    dup2(fd, 1);
-                    close(fd);
-                }
-                 break;
-            case '2' :
-                 if((fd=open(args[i+1], O_WRONLY)) <0)
-                {
-                    perror(args[i+1]);
-                    exit(1);
-                }
-                 if(fd!=2)
-                {
-                    dup2(fd,2);
-                    close(fd);
-                }
-                 break;
+                exit(1);
             }
+            perror(args[i+1]);
+            errno=0;
+            if(fd)
+            {
+                dup2(fd,0);
+                close(fd);
+            }
+            break;
+        case '>' :
+            if((fd=open(args[i+1], O_WRONLY)) < 0)
+                if((fd=creat(args[i+1], O_WRONLY)) < 0)
+                {
+                    perror(args[i+1]);
+                    exit(1);
+                }
+            if(fd!=1)
+            {
+                dup2(fd, 1);
+                close(fd);
+            }
+            break;
+        case '2' :
+            if((fd=open(args[i+1], O_WRONLY)) <0)
+                if((fd=creat(args[i+1], O_WRONLY)) < 0)
+                {
+                    perror(args[i+1]);
+                    exit(1);
+                }
+            if(fd!=2)
+            {
+                dup2(fd,2);
+                close(fd);
+            }
+            break;
+        }
         //cleaning
         /*
         int j=i;
@@ -115,31 +128,33 @@ void def_cmd(char** args,int* size)
     int fds[2];
     while(args[i])
     {
-    	if(args[i][0]=='|')
-    	{
-    		pipe(fds);
-    		switch(fork())
-    		{
-    			case -1 :
-    				perror("fork");
-    				errno=0;
-    				break;
-    			case 0  :
-    				dup2(fds[0],0);
-    				close(fds[1]);
-    				close(fds[0]);
-    				*size -= i;
-    				def_cmd(args+i+1, size);
-    				break;
-    			default :
-    				dup2(fds[1],1);
-    				close(fds[1]);
-    				close(fds[0]);
-    				args[i]= NULL;
-    				break;
-    		}
-    	}
-    	i++;
+        if(args[i][0]=='|')
+        {
+            pipe(fds);
+            pid_t W;
+            switch(W=fork())
+            {
+            case -1 :
+                perror("fork");
+                errno=0;
+                break;
+            case 0  :
+                dup2(fds[0],0);
+                close(fds[1]);
+                close(fds[0]);
+                *size -= i;
+                def_cmd(args+i+1, size);
+                break;
+            default :
+                dup2(fds[1],1);
+                close(fds[1]);
+                close(fds[0]);
+                args[i]= NULL;
+                //waitpid(W,NULL,WUNTRACED);
+                break;
+            }
+        }
+        i++;
     }
     execvp(args[0],args);
     perror(args[0]);
@@ -178,30 +193,30 @@ int main(int argc,char* argv[])
         }
         else
         {
-        pid_t pid;
-        switch(pid=fork())
-        {
-            case -1 : 
+            pid_t pid;
+            switch(pid=fork())
+            {
+            case -1 :
                 perror("fork");
                 errno=0;
                 break;
             case 0 :
                 def_cmd(args,&args_size);
             default :
-            	if(!flag)
-                	waitpid(pid,NULL,WUNTRACED);
+                if(!flag)
+                    waitpid(pid,NULL,0);
                 //printf("%s %%",cwd);
                 break;
-        }
-        printf("%s %% ",getcwd(cwd,MAX));
+            }
+            printf("%s %% ",getcwd(cwd,MAX));
         }
     }
     printf("\n");
     flag=0;
     while(args[flag]) // cleaning memory
     {
-    	free(args[flag]);
-    	flag++;
+        free(args[flag]);
+        flag++;
     }
     flag=0;
     free(args);
