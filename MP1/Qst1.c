@@ -6,19 +6,32 @@
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h>
+
+#define MAX 10000
 extern int errno;
 //TODO implement special args array where pipes and redirections are stored
-char** parse(char* buff)
+//TODO fix print flush error (works on correctly on gdb but not on stdout)
+//TODO implement last command entry with '\033' '[' 'A/B/C/D'
+char** parse(char* buff,int* size,int* flag)
 {
     char* res;  
     int i=0;
-    char** ret=(char**)malloc(sizeof(char*)*255);
+    char** ret=(char**)malloc(sizeof(char*)*MAX);
     while(res=strsep(&buff," "))
     {
+    	if(res[0]=='&')  // background
+        {	
+        	*flag=1;
+        	 continue;
+        }
         ret[i]=malloc(strlen(res)+1);
         strcpy(ret[i],res);
+        
         i++;
     }
+    *size=i;
+    if(i>0 && !strcmp(ret[i-1],""))
+    	ret[i-1]=NULL;
     return ret;
 }
 void cd(char* dir)
@@ -39,9 +52,10 @@ int find_redir(char** args)
     }
     return -1;
 }
-void def_cmd(char** args)
+void def_cmd(char** args,int* size)
 {
     int i=find_redir(args);
+    *size=i;
     int fd;
     if(i>0)
     {
@@ -53,6 +67,8 @@ void def_cmd(char** args)
                     perror(args[i+1]);
                     exit(1);
                 }
+                perror(args[i+1]);
+                errno=0;
                 if(fd)
                 {
                     dup2(fd,0);
@@ -85,13 +101,45 @@ void def_cmd(char** args)
                  break;
             }
         //cleaning
+        /*
         int j=i;
         while(args[j++]);
         j--;
         while(j>=i)
         {
-            free(args[j--]);
-        }
+            args[j--]=NULL;
+        }*/
+        args[i]=NULL; // no need to remove every string, since all loops break at NULLs
+    }
+    i=0;
+    int fds[2];
+    while(args[i])
+    {
+    	if(args[i][0]=='|')
+    	{
+    		pipe(fds);
+    		switch(fork())
+    		{
+    			case -1 :
+    				perror("fork");
+    				errno=0;
+    				break;
+    			case 0  :
+    				dup2(fds[0],0);
+    				close(fds[1]);
+    				close(fds[0]);
+    				*size -= i;
+    				def_cmd(args+i+1, size);
+    				break;
+    			default :
+    				dup2(fds[1],1);
+    				close(fds[1]);
+    				close(fds[0]);
+    				args[i]= NULL;
+    				break;
+    		}
+    	}
+    	i++;
     }
     execvp(args[0],args);
     perror(args[0]);
@@ -99,17 +147,19 @@ void def_cmd(char** args)
 }
 int main(int argc,char* argv[])
 {
-    char* buff=malloc(255);
-    char* cwd=malloc(255);
+    char* buff=malloc(MAX);
+    char* cwd=malloc(MAX);
     char** args;
-    cwd=getcwd(cwd,255);
+    int args_size;
+    int flag=0; // existence of '&'
+    cwd=getcwd(cwd,MAX);
     printf("%s %% ",cwd);
-    while(fgets(buff,255,stdin)!= NULL)
+    while(fgets(buff,MAX,stdin)!= NULL)
     {
 
         buff[strlen(buff)-1]=0; // remove the '\n'
-        args=parse(buff);
-        if(args==NULL || !strcmp(args[0],""))
+        args=parse(buff,&args_size,&flag);
+        if(args[0]==NULL || !strcmp(args[0],""))
         {
             printf("%s %% ",cwd);
             continue;
@@ -122,7 +172,7 @@ int main(int argc,char* argv[])
         if(!strcmp(args[0],"cd"))
         {
             cd(args[1]);
-            cwd=getcwd(cwd,255);
+            cwd=getcwd(cwd,MAX);
             printf("%s %% ",cwd);
             continue;
         }
@@ -136,14 +186,23 @@ int main(int argc,char* argv[])
                 errno=0;
                 break;
             case 0 :
-                def_cmd(args);
+                def_cmd(args,&args_size);
             case 1 :
-                wait(NULL);
+            	if(!flag)
+                	waitpid(pid,NULL,WUNTRACED);
                 //printf("%s %%",cwd);
                 break;
         }
-        printf("%s %%\n",getcwd(cwd,255));
+        printf("%s %% ",getcwd(cwd,MAX));
         }
     }
     printf("\n");
+    flag=0;
+    while(args[flag]) // cleaning memory
+    {
+    	free(args[flag]);
+    	flag++;
+    }
+    flag=0;
+    free(args);
 }
