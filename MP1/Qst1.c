@@ -9,9 +9,17 @@
 
 #define MAX 10000
 extern int errno;
+char* prev;
 //TODO implement special args array where pipes and redirections are stored
 //TODO fix print flush error (works on correctly on gdb but not on stdout) : fixed
 //TODO implement last command entry with '\033' '[' 'A/B/C/D'
+void helper()
+{
+	printf("Welcome to Mishell 0.0.1\n");
+	printf("If you need any help why don't you ask man, he's the man for the job\n");
+	printf("Usage : man <command>\n");
+	printf("With Mishell you can use environment variables");
+}
 char** parse(char* buff,int* size,int* flag)
 {
     char* res;
@@ -48,9 +56,24 @@ char** parse(char* buff,int* size,int* flag)
 void cd(char* dir)
 {
     if(dir==NULL || !strcmp(dir,"") || !strcmp(dir,"~"))
+    {
+    	prev=getcwd(prev,MAX);
         chdir(getenv("HOME"));
+    }
     else
-        chdir(dir);
+    {
+    	if(!strcmp(dir,"-")) // restore previous pwd
+    	{
+    		char* tmp=getcwd(tmp,MAX);
+    		chdir(prev);
+    		prev=tmp;
+    	}
+    	else
+    	{
+    		prev=getcwd(prev,MAX);
+        	chdir(dir);
+        }
+    }
 }
 int find_redir(char** args)
 {
@@ -168,11 +191,13 @@ int main(int argc,char* argv[])
     int args_size;
     int flag=0; // existence of '&'
     cwd=getcwd(cwd,MAX);
+    prev=getcwd(prev,MAX);
     printf("%s %% ",cwd);
     while(fgets(buff,MAX,stdin)!= NULL)
     {
 
         buff[strlen(buff)-1]=0; // remove the '\n'
+        printf("string is %d || %d || %d\n",(int)buff[0],(int)buff[1],(int)buff[2]);
         args=parse(buff,&args_size,&flag);
         if(args[0]==NULL || !strcmp(args[0],""))
         {
@@ -191,6 +216,8 @@ int main(int argc,char* argv[])
             printf("%s %% ",cwd);
             continue;
         }
+        if(!strcmp(args[0],"help"))
+        	helper();
         else
         {
             pid_t pid;
