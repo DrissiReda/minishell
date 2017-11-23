@@ -58,7 +58,11 @@ void cd(char* dir)
     if(dir==NULL || !strcmp(dir,"") || !strcmp(dir,"~"))
     {
     	prev=getcwd(prev,MAX);
-        chdir(getenv("HOME"));
+        if(chdir(getenv("HOME"))<0)
+        {
+        	perror("cd ");
+        	errno=0;
+        }
     }
     else
     {
@@ -71,7 +75,11 @@ void cd(char* dir)
     	else
     	{
     		prev=getcwd(prev,MAX);
-        	chdir(dir);
+        	if(chdir(dir)<0)
+        	{
+        		perror("cd ");
+        		errno=0;
+        	}
         }
     }
 }
@@ -101,8 +109,6 @@ void def_cmd(char** args,int* size)
                 perror(args[i+1]);
                 exit(1);
             }
-            perror(args[i+1]);
-            errno=0;
             if(fd)
             {
                 dup2(fd,0);
@@ -197,7 +203,7 @@ int main(int argc,char* argv[])
     {
 
         buff[strlen(buff)-1]=0; // remove the '\n'
-        printf("string is %d || %d || %d\n",(int)buff[0],(int)buff[1],(int)buff[2]);
+        //printf("string is %d || %d || %d\n",(int)buff[0],(int)buff[1],(int)buff[2]);
         args=parse(buff,&args_size,&flag);
         if(args[0]==NULL || !strcmp(args[0],""))
         {
