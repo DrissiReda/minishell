@@ -14,7 +14,7 @@ typedef struct piped
 	struct piped* next;
 } piped;
 extern int errno;
-char* prev;
+char* prev=NULL; 
 //TODO implement special args array where pipes and redirections are stored : fixed
 //TODO fix print flush error (works on correctly on gdb but not on stdout)  : fixed
 //TODO implement last command entry with '\033' '[' 'A/B/C/D'  
@@ -29,10 +29,11 @@ void helper()
 }
 piped* parse(char* buff,int* flag) // takes care of parsing
 {
-    char* res;
+    char* res=NULL;
     int i=0;
-    piped* ret=(piped*)malloc(sizeof(piped));
-    ret->args=(char**)malloc(sizeof(char*)*MAX);
+    piped* ret=(piped*)calloc(1,sizeof(piped));
+    ret->args=(char**)calloc(1,sizeof(char*)*MAX);
+    ret->next=NULL;
     piped* current=ret;
     
     
@@ -45,22 +46,22 @@ piped* parse(char* buff,int* flag) // takes care of parsing
                 *flag=1;  // no need for a flag for each pipe
                 continue; // since we can only add this token to the end
             case '~':  // home variable
-                current->args[i]=malloc(strlen(getenv("HOME")+1));
+                current->args[i]=calloc(1,strlen(getenv("HOME")+1));
                 strcpy(current->args[i],getenv("HOME"));
                 break;
             case '$': //env variable
-                current->args[i]=malloc(strlen(getenv(res+1)+1));
+                current->args[i]=calloc(1,strlen(getenv(res+1)+1));
                 strcpy(current->args[i],getenv(res+1));
                 break;
             case '|': // pipes, create a new node in our linked list
             	i=-1; //reset should be -1 cuz i will increment and go back to 0
-            	current->next=malloc(sizeof(piped));
+            	current->next=calloc(1,sizeof(piped));
             	current=current->next;
-            	current->args=(char**)malloc(sizeof(char*)*MAX);
+            	current->args=(char**)calloc(1,sizeof(char*)*MAX);
             	current->next = NULL;
             	break;
             default :
-                current->args[i]=malloc(strlen(res)+1);
+                current->args[i]=calloc(1,strlen(res)+1);
                 strcpy(current->args[i],res);
                 break;
             }
@@ -68,7 +69,7 @@ piped* parse(char* buff,int* flag) // takes care of parsing
         i++;
     }
     if(i>0 && !strcmp(current->args[i-1],""))
-        current->args[i-1]=NULL;
+        free(current->args[i-1]);
     return ret;
 }
 void cd(char* dir) // executes cd command
@@ -234,8 +235,8 @@ void def_cmd(piped* cmds)
 }
 int main(int argc,char* argv[])
 {
-    char* buff=malloc(MAX);
-    char* cwd=malloc(MAX);
+    char* buff=calloc(1,MAX);
+    char* cwd=calloc(1,MAX);
     piped* cmds;
     int flag=0; // existence of '&'
     cwd=getcwd(cwd,MAX);
@@ -294,16 +295,19 @@ int main(int argc,char* argv[])
         }
     }
     printf("\n");
-    flag=0;
+    piped* current;
     while(cmds)
     {
-    	while(cmds->args[flag]) // cleaning memory
+    	current=cmds;
+    	while(current->args[flag]) // cleaning memory
     	{
-        	free(cmds->args[flag]);
-        	flag++;
+        	free(current->args[flag]);
     	}
-    	flag=0;
-    	free(cmds->args);
+    	free(current->args);
     	cmds=cmds->next;
+    	free(current);
     }
+    free(cmds);
+    free(buff);
+    free(cwd);
 }
