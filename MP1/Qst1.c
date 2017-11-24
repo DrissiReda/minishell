@@ -7,12 +7,18 @@
 #include <fcntl.h>
 #include <errno.h>
 
-#define MAX 10000
+#define MAX 100
+typedef struct piped
+{
+	char** args;
+	struct piped* next;
+} piped;
 extern int errno;
 char* prev;
-//TODO implement special args array where pipes and redirections are stored
-//TODO fix print flush error (works on correctly on gdb but not on stdout) : fixed
-//TODO implement last command entry with '\033' '[' 'A/B/C/D'
+//TODO implement special args array where pipes and redirections are stored : fixed
+//TODO fix print flush error (works on correctly on gdb but not on stdout)  : fixed
+//TODO implement last command entry with '\033' '[' 'A/B/C/D'  
+//TODO fix pipes, error management and opening/closing streams : fixed 
 void helper()
 {
 	printf("Welcome to Mishell 0.0.1\n");
@@ -20,40 +26,51 @@ void helper()
 	printf("Usage : man <command>\n");
 	printf("With Mishell you can use environment variables");
 }
-char** parse(char* buff,int* size,int* flag)
+piped* parse(char* buff,int* flag) // takes care of parsing
 {
     char* res;
     int i=0;
-    char** ret=(char**)malloc(sizeof(char*)*MAX);
+    piped* ret=(piped*)malloc(sizeof(piped));
+    ret->args=(char**)malloc(sizeof(char*)*MAX);
+    piped* current=ret;
+    
+    
+    
     while(res=strsep(&buff," "))
     {
             switch(res[0])
             {
-            case '&' : // background
-                *flag=1;
-                continue;
+            case '&' :    // background
+                *flag=1;  // no need for a flag for each pipe
+                continue; // since we can only add this token to the end
             case '~':  // home variable
-                ret[i]=malloc(strlen(getenv("HOME")+1));
-                strcpy(ret[i],getenv("HOME"));
+                current->args[i]=malloc(strlen(getenv("HOME")+1));
+                strcpy(current->args[i],getenv("HOME"));
                 break;
             case '$': //env variable
-                ret[i]=malloc(strlen(getenv(res+1)+1));
-                strcpy(ret[i],getenv(res+1));
+                current->args[i]=malloc(strlen(getenv(res+1)+1));
+                strcpy(current->args[i],getenv(res+1));
                 break;
+            case '|': // pipes, create a new node in our linked list
+            	i=-1; //reset should be -1 cuz i will increment and go back to 0
+            	current->next=malloc(sizeof(piped));
+            	current=current->next;
+            	current->args=(char**)malloc(sizeof(char*)*MAX);
+            	current->next = NULL;
+            	break;
             default :
-                ret[i]=malloc(strlen(res)+1);
-                strcpy(ret[i],res);
+                current->args[i]=malloc(strlen(res)+1);
+                strcpy(current->args[i],res);
                 break;
             }
 
         i++;
     }
-    *size=i;
-    if(i>0 && !strcmp(ret[i-1],""))
-        ret[i-1]=NULL;
+    if(i>0 && !strcmp(current->args[i-1],""))
+        current->args[i-1]=NULL;
     return ret;
 }
-void cd(char* dir)
+void cd(char* dir) // executes cd command
 {
     if(dir==NULL || !strcmp(dir,"") || !strcmp(dir,"~"))
     {
@@ -68,9 +85,9 @@ void cd(char* dir)
     {
     	if(!strcmp(dir,"-")) // restore previous pwd
     	{
-    		char* tmp=getcwd(tmp,MAX);
+    		char* current=getcwd(current,MAX);
     		chdir(prev);
-    		prev=tmp;
+    		prev=current;
     	}
     	else
     	{
@@ -83,7 +100,7 @@ void cd(char* dir)
         }
     }
 }
-int find_redir(char** args)
+int find_redir(char** args) // searchs for any redirections
 {
     int i=0;
     while(args[i])
@@ -94,11 +111,30 @@ int find_redir(char** args)
     }
     return -1;
 }
-void def_cmd(char** args,int* size)
+void redir(int old,int new) // redirects file descriptors
 {
-    int i=find_redir(args);
-    *size=i;
-    int fd;
+	if(old != new)
+	{
+		dup2(old,new);
+		close(old);
+	}
+}
+void do_exec(int input,int output,char** args) // executes function with custom input
+{                                              // and output
+	  redir(input,STDIN_FILENO);
+      redir(output,STDOUT_FILENO);
+      if(execvp (args[0], args)<0)
+      {
+      	perror(args[0]);
+      	exit(1);
+      }
+}
+// takes care of redirections/forking
+int spawn_exec (int input, int output, char** args)
+{
+  pid_t pid;
+  int i=find_redir(args);
+  int fd;
     if(i>0)
     {
         switch(args[i][0])
@@ -152,77 +188,97 @@ void def_cmd(char** args,int* size)
             args[j--]=NULL;
         }*/
         args[i]=NULL; // no need to remove every string, since all loops break at NULLs
+  	}                 // global cleaning will be done at the end of main's while loop iteration
+  switch(pid = fork ())
+  {
+  	case -1 : 
+  		perror("fork");
+  		errno=0;
+  		break;
+  	case  0 :
+      	do_exec(input,output,args);
+      	exit(1);
+    default :
+    	waitpid(pid,NULL,0);
     }
-    i=0;
-    int fds[2];
-    while(args[i])
+  return pid;
+}
+/* manages forking, executes all piped
+ * commands but the last, since it outputs
+ * to stdout 
+ */ 
+int fork_pipes (piped* cmds)
+{
+  int input= STDIN_FILENO; //first reads from stdin
+  piped* current=cmds;
+  
+  while(current->next)
     {
-        if(args[i][0]=='|')
-        {
-            pipe(fds);
-            pid_t W;
-            switch(W=fork())
-            {
-            case -1 :
-                perror("fork");
-                errno=0;
-                break;
-            case 0  :
-                dup2(fds[0],0);
-                close(fds[1]);
-                close(fds[0]);
-                *size -= i;
-                def_cmd(args+i+1, size);
-                break;
-            default :
-                dup2(fds[1],1);
-                close(fds[1]);
-                close(fds[0]);
-                args[i]= NULL;
-                //waitpid(W,NULL,WUNTRACED);
-                break;
-            }
-        }
-        i++;
+      	int fds[2];
+      	pid_t pid;
+      	pipe (fds);
+      	/*input is carried from previous command
+      	 *output is carried to next command
+      	 */
+      	switch(pid=fork())
+      	{
+      		case -1 :
+      			perror("fork");
+      			exit(1);
+      		case 0 :
+      			close(fds[0]);
+      			spawn_exec(input, fds[1], current->args);
+      			exit(1);
+      		default :
+      			waitpid(pid,NULL,0);
+      			close (fds[1]);
+      			close (input);
+      			input = fds[0];
+      	}
+      current=current->next;
     }
-    execvp(args[0],args);
-    perror(args[0]);
-    exit(0);
+   return spawn_exec(input,STDOUT_FILENO, current->args);
+}
+void def_cmd(piped* cmds)
+{
+    fork_pipes(cmds);
 }
 int main(int argc,char* argv[])
 {
     char* buff=malloc(MAX);
     char* cwd=malloc(MAX);
-    char** args;
-    int args_size;
+    piped* cmds;
     int flag=0; // existence of '&'
     cwd=getcwd(cwd,MAX);
     prev=getcwd(prev,MAX);
     printf("%s %% ",cwd);
     while(fgets(buff,MAX,stdin)!= NULL)
     {
-
-        buff[strlen(buff)-1]=0; // remove the '\n'
+		if(strlen(buff)>0)
+        	buff[strlen(buff)-1]=0; // remove the '\n'
         //printf("string is %d || %d || %d\n",(int)buff[0],(int)buff[1],(int)buff[2]);
-        args=parse(buff,&args_size,&flag);
-        if(args[0]==NULL || !strcmp(args[0],""))
+        cmds=parse(buff,&flag);
+        if(cmds->args[0]==NULL || !strcmp(cmds->args[0],""))
         {
             printf("%s %% ",cwd);
             continue;
         }
-        if(!strcmp(args[0],"exit"))
+        else
+        if(!strcmp(cmds->args[0],"exit"))
         {
             printf("\n");
             break;
         }
-        if(!strcmp(args[0],"cd"))
+        else
+        if(!strcmp(cmds->args[0],"cd"))
         {
-            cd(args[1]);
+            cd(cmds->args[1]);
             cwd=getcwd(cwd,MAX);
             printf("%s %% ",cwd);
             continue;
         }
-        if(!strcmp(args[0],"help"))
+        else
+        if(!strcmp(cmds->args[0],"help"))
         	helper();
         else
         {
@@ -234,7 +290,8 @@ int main(int argc,char* argv[])
                 errno=0;
                 break;
             case 0 :
-                def_cmd(args,&args_size);
+                def_cmd(cmds);
+                exit(1);
             default :
                 if(!flag)
                     waitpid(pid,NULL,0);
@@ -246,11 +303,15 @@ int main(int argc,char* argv[])
     }
     printf("\n");
     flag=0;
-    while(args[flag]) // cleaning memory
+    while(cmds)
     {
-        free(args[flag]);
-        flag++;
+    	while(cmds->args[flag]) // cleaning memory
+    	{
+        	free(cmds->args[flag]);
+        	flag++;
+    	}
+    	flag=0;
+    	free(cmds->args);
+    	cmds=cmds->next;
     }
-    flag=0;
-    free(args);
 }
