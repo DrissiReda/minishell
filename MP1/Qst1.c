@@ -25,6 +25,7 @@ void helper()
 	printf("If you need any help why don't you ask man, he's the man for the job\n");
 	printf("Usage : man <command>\n");
 	printf("With Mishell you can use environment variables");
+	printf("Warning, you must separate all tokens with a space (especially pipes)\n");
 }
 piped* parse(char* buff,int* flag) // takes care of parsing
 {
@@ -145,11 +146,7 @@ int spawn_exec (int input, int output, char** args)
                 perror(args[i+1]);
                 exit(1);
             }
-            if(fd)
-            {
-                dup2(fd,0);
-                close(fd);
-            }
+            redir(fd,STDIN_FILENO);
             break;
         case '>' :
             if((fd=open(args[i+1], O_WRONLY)) < 0)
@@ -158,11 +155,7 @@ int spawn_exec (int input, int output, char** args)
                     perror(args[i+1]);
                     exit(1);
                 }
-            if(fd!=1)
-            {
-                dup2(fd, 1);
-                close(fd);
-            }
+            redir(fd,STDOUT_FILENO);
             break;
         case '2' :
             if((fd=open(args[i+1], O_WRONLY)) <0)
@@ -171,11 +164,7 @@ int spawn_exec (int input, int output, char** args)
                     perror(args[i+1]);
                     exit(1);
                 }
-            if(fd!=2)
-            {
-                dup2(fd,2);
-                close(fd);
-            }
+            redir(fd,STDERR_FILENO);
             break;
         }
         //cleaning
@@ -266,7 +255,6 @@ int main(int argc,char* argv[])
         else
         if(!strcmp(cmds->args[0],"exit"))
         {
-            printf("\n");
             break;
         }
         else
@@ -279,7 +267,11 @@ int main(int argc,char* argv[])
         }
         else
         if(!strcmp(cmds->args[0],"help"))
+        {
         	helper();
+        	printf("%s %% ",cwd);
+            continue;
+        }
         else
         {
             pid_t pid;
