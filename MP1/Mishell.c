@@ -38,10 +38,14 @@ piped* parse(char* buff,int* flag) // takes care of parsing
     
     
     
-    while(res=strsep(&buff," "))
+    while(buff!=NULL && strlen(buff) && (res=strsep(&buff," ")))
     {
             switch(res[0])
             {
+            case '\0' :
+            	current->args[i]=calloc(1,2);
+                strcpy(current->args[i],".");
+                break;
             case '&' :    // background
                 *flag=1;  // no need for a flag for each pipe
                 continue; // since we can only add this token to the end
@@ -65,11 +69,8 @@ piped* parse(char* buff,int* flag) // takes care of parsing
                 strcpy(current->args[i],res);
                 break;
             }
-
         i++;
     }
-    if(i>0 && !strcmp(current->args[i-1],"")) // removing empty strings to avoid errors
-        free(current->args[i-1]);
     return ret;
 }
 void cd(char* dir) // executes cd command
@@ -233,6 +234,24 @@ void def_cmd(piped* cmds)
 {
     fork_pipes(cmds);
 }
+void clean(piped** cmds)
+{
+		piped* current;
+    	int i=0; // used to iterate through args
+    	while(*cmds)
+    	{
+    		current=*cmds;
+    		while(current->args[i]) // cleaning memory
+    		{
+        		free(current->args[i]);
+        		i++;
+    		}
+    		free(current->args);
+    		*cmds=(*cmds)->next;
+    		free(current);
+    	}
+    	free(*cmds);
+}
 int main(int argc,char* argv[])
 {
     char* buff=calloc(1,MAX);
@@ -244,6 +263,7 @@ int main(int argc,char* argv[])
     printf("%s %% ",cwd);
     while(fgets(buff,MAX,stdin)!= NULL)
     {
+    	flag=0;
 		if(strlen(buff)>0)
         	buff[strlen(buff)-1]=0; // remove the '\n'
         //printf("string is %d || %d || %d\n",(int)buff[0],(int)buff[1],(int)buff[2]);
@@ -256,7 +276,7 @@ int main(int argc,char* argv[])
         else
         if(!strcmp(cmds->args[0],"exit"))
         {
-            break;
+            return 0;
         }
         else
         if(!strcmp(cmds->args[0],"cd"))
@@ -293,23 +313,10 @@ int main(int argc,char* argv[])
             }
             printf("%s %% ",getcwd(cwd,MAX));
         }
+        clean(&cmds);
     }
     printf("\n");
-    piped* current;
-    flag=0; // used to iterate through args
-    while(cmds)
-    {
-    	current=cmds;
-    	while(current->args[flag]) // cleaning memory
-    	{
-        	free(current->args[flag]);
-        	flag++;
-    	}
-    	free(current->args);
-    	cmds=cmds->next;
-    	free(current);
-    }
-    free(cmds);
+    clean(&cmds);
     free(buff);
     free(cwd);
 }
