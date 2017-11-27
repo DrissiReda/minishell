@@ -1,7 +1,7 @@
 default : Mishell
 
-Mishell.o: Qst1.c
-	gcc -c -g Qst1.c -o Mishell.o
+Mishell.o: Mishell.c
+	gcc -c -g Mishell.c -o Mishell.o
 Mishell : Mishell.o
 	gcc Mishell.o -o Mishell
 clean :
