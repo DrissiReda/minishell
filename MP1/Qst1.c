@@ -24,7 +24,7 @@ void helper()
 	printf("Welcome to Mishell 0.0.1\n");
 	printf("If you need any help why don't you ask man, he's the man for the job\n");
 	printf("Usage : man <command>\n");
-	printf("With Mishell you can use environment variables");
+	printf("With Mishell you can use environment variables\n");
 	printf("Warning, you must separate all tokens with a space (especially pipes)\n");
 }
 piped* parse(char* buff,int* flag) // takes care of parsing
@@ -68,7 +68,7 @@ piped* parse(char* buff,int* flag) // takes care of parsing
 
         i++;
     }
-    if(i>0 && !strcmp(current->args[i-1],""))
+    if(i>0 && !strcmp(current->args[i-1],"")) // removing empty strings to avoid errors
         free(current->args[i-1]);
     return ret;
 }
@@ -137,7 +137,7 @@ int spawn_exec (int input, int output, char** args)
   pid_t pid;
   int i=find_redir(args);
   int fd;
-    if(i>0)
+    if(i>0) // redirection
     {
         switch(args[i][0])
         {
@@ -175,11 +175,11 @@ int spawn_exec (int input, int output, char** args)
         j--;
         while(j>=i)
         {
-            args[j--]=NULL;
+            free(args[j--]);
         }*/
         args[i]=NULL; // no need to remove every string, since all loops break at NULLs
   	}                 // global cleaning will be done at the end of main's while loop iteration
-  switch(pid = fork ())
+  switch(pid = fork ()) // fork
   {
   	case -1 : 
   		perror("fork");
@@ -296,12 +296,14 @@ int main(int argc,char* argv[])
     }
     printf("\n");
     piped* current;
+    flag=0; // used to iterate through args
     while(cmds)
     {
     	current=cmds;
     	while(current->args[flag]) // cleaning memory
     	{
         	free(current->args[flag]);
+        	flag++;
     	}
     	free(current->args);
     	cmds=cmds->next;
