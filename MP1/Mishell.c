@@ -7,14 +7,13 @@
 #include <fcntl.h>
 #include <errno.h>
 
-#define MAX 100
+#define MAX 1000
 typedef struct piped
 {
 	char** args;
 	struct piped* next;
 } piped;
 extern int errno;
-char* prev=NULL; 
 //TODO implement special args array where pipes and redirections are stored : fixed
 //TODO fix print flush error (works on correctly on gdb but not on stdout)  : fixed
 //TODO implement last command entry with '\033' '[' 'A/B/C/D'  
@@ -42,7 +41,7 @@ piped* parse(char* buff,int* flag) // takes care of parsing
     {
             switch(res[0])
             {
-            case '\0' :
+            case '\0' : // replace empty strings with current directory
             	current->args[i]=calloc(1,2);
                 strcpy(current->args[i],".");
                 break;
@@ -54,17 +53,28 @@ piped* parse(char* buff,int* flag) // takes care of parsing
                 strcpy(current->args[i],getenv("HOME"));
                 break;
             case '$': //env variable
-                current->args[i]=calloc(1,strlen(getenv(res+1)+1));
-                strcpy(current->args[i],getenv(res+1));
+            	if(getenv(res+1)==NULL) //proper behavior for undefined variables
+            	{	
+            		i--;
+            		break;
+            	}
+            	else // normal behavior
+            	{
+                	current->args[i]=calloc(1,strlen(getenv(res+1))+1);
+                	strcpy(current->args[i],getenv(res+1));
+                }
                 break;
             case '|': // pipes, create a new node in our linked list
             	i=-1; //reset should be -1 cuz i will increment and go back to 0
-            	current->next=calloc(1,sizeof(piped));
+            	current->next=calloc(1,sizeof(piped)); //linked list manipulation
             	current=current->next;
             	current->args=(char**)calloc(1,sizeof(char*)*MAX);
             	current->next = NULL;
             	break;
-            default :
+            case '\t'://ignore
+            	i--;
+            	break;
+            default : // general arguments case
                 current->args[i]=calloc(1,strlen(res)+1);
                 strcpy(current->args[i],res);
                 break;
@@ -73,28 +83,33 @@ piped* parse(char* buff,int* flag) // takes care of parsing
     }
     return ret;
 }
-void cd(char* dir) // executes cd command
+void cd(char* dir,char** prev) // executes cd command
 {
-    if(dir==NULL || !strcmp(dir,"") || !strcmp(dir,"~"))
+    if(dir==NULL || !strcmp(dir,"") || !strcmp(dir,"~"))//cd to home var
     {
-    	prev=getcwd(prev,MAX);
-        if(chdir(getenv("HOME"))<0)
+    	*prev=getcwd(*prev,MAX);
+        if(chdir(getenv("HOME"))<0) 
         {
         	perror("cd ");
         	errno=0;
         }
     }
-    else
+    else 
     {
     	if(!strcmp(dir,"-")) // restore previous pwd
     	{
-    		char* current=getcwd(current,MAX);
-    		chdir(prev);
-    		prev=current;
+    		if(*prev==NULL)
+    			fprintf(stderr,"Mishell: cd: OLDPWD not set\n");	
+    		else
+    		{
+    			char* current=getcwd(current,MAX);
+    			chdir(*prev);
+    			*prev=current;
+    		}
     	}
-    	else
+    	else // general cd case
     	{
-    		prev=getcwd(prev,MAX);
+    		*prev=getcwd(*prev,MAX);
         	if(chdir(dir)<0)
         	{
         		perror("cd ");
@@ -106,7 +121,7 @@ void cd(char* dir) // executes cd command
 int find_redir(char** args) // searchs for any redirections
 {
     int i=0;
-    while(args[i])
+    while(args[i]) //while args is not null
     {
         if(!strcmp(args[i],"<")||!strcmp(args[i],">")||!strcmp(args[i],"2>"))
             return i;
@@ -126,7 +141,7 @@ void do_exec(int input,int output,char** args) // executes function with custom 
 {                                              // and output
 	  redir(input,STDIN_FILENO);
       redir(output,STDOUT_FILENO);
-      if(execvp (args[0], args)<0)
+      if(execvp (args[0], args)<0) // displays error if not successful
       {
       	perror(args[0]);
       	exit(1);
@@ -140,9 +155,9 @@ int spawn_exec (int input, int output, char** args)
   int fd;
     if(i>0) // redirection
     {
-        switch(args[i][0])
-        {
-        case '<' :
+        switch(args[i][0])// each case has a different first char  
+        {                 // so switch makes sense
+        case '<' : // stdin
             if((fd=open(args[i+1], O_RDONLY)) < 0)
             {
                 perror(args[i+1]);
@@ -150,7 +165,7 @@ int spawn_exec (int input, int output, char** args)
             }
             redir(fd,STDIN_FILENO);
             break;
-        case '>' :
+        case '>' : // stdout
             if((fd=open(args[i+1], O_WRONLY)) < 0)
                 if((fd=creat(args[i+1], O_WRONLY)) < 0)
                 {
@@ -159,7 +174,7 @@ int spawn_exec (int input, int output, char** args)
                 }
             redir(fd,STDOUT_FILENO);
             break;
-        case '2' :
+        case '2' : // stderr
             if((fd=open(args[i+1], O_WRONLY)) <0)
                 if((fd=creat(args[i+1], O_WRONLY)) < 0)
                 {
@@ -169,24 +184,15 @@ int spawn_exec (int input, int output, char** args)
             redir(fd,STDERR_FILENO);
             break;
         }
-        //cleaning
-        /*
-        int j=i;
-        while(args[j++]);
-        j--;
-        while(j>=i)
-        {
-            free(args[j--]);
-        }*/
         args[i]=NULL; // no need to remove every string, since all loops break at NULLs
   	}                 // global cleaning will be done at the end of main's while loop iteration
   switch(pid = fork ()) // fork
   {
-  	case -1 : 
+  	case -1 : //error
   		perror("fork");
   		errno=0;
   		break;
-  	case  0 :
+  	case  0 : // child executes cmd
       	do_exec(input,output,args);
       	exit(1);
     default :
@@ -199,7 +205,7 @@ int spawn_exec (int input, int output, char** args)
  * to stdout 
  */ 
 int fork_pipes (piped* cmds)
-{
+{ 
   int input= STDIN_FILENO; //first reads from stdin
   piped* current=cmds;
   
@@ -256,10 +262,10 @@ int main(int argc,char* argv[])
 {
     char* buff=calloc(1,MAX);
     char* cwd=calloc(1,MAX);
+    char* prevcd=NULL; 
     piped* cmds;
     int flag=0; // existence of '&'
     cwd=getcwd(cwd,MAX);
-    prev=getcwd(prev,MAX);
     printf("%s %% ",cwd);
     while(fgets(buff,MAX,stdin)!= NULL)
     {
@@ -281,7 +287,7 @@ int main(int argc,char* argv[])
         else
         if(!strcmp(cmds->args[0],"cd"))
         {
-            cd(cmds->args[1]);
+            cd(cmds->args[1],&prevcd);
             cwd=getcwd(cwd,MAX);
             printf("%s %% ",cwd);
             continue;
