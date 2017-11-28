@@ -74,6 +74,10 @@ piped* parse(char* buff,int* flag) // takes care of parsing
             case '\t'://ignore
             	i--;
             	break;
+            case '"' :
+            	res++; //get rid of the leading "
+            	sprintf(res,"%s %s",res,strsep(&buff,"\"")); 
+            	//no need to break we need the default
             default : // general arguments case
                 current->args[i]=calloc(1,strlen(res)+1);
                 strcpy(current->args[i],res);
@@ -201,8 +205,7 @@ int spawn_exec (int input, int output, char** args)
   return pid;
 }
 /* manages forking, executes all piped
- * commands but the last, since it outputs
- * to stdout 
+ * commands
  */ 
 int fork_pipes (piped* cmds)
 { 
@@ -272,7 +275,6 @@ int main(int argc,char* argv[])
     	flag=0;
 		if(strlen(buff)>0)
         	buff[strlen(buff)-1]=0; // remove the '\n'
-        //printf("string is %d || %d || %d\n",(int)buff[0],(int)buff[1],(int)buff[2]);
         cmds=parse(buff,&flag);
         if(cmds->args[0]==NULL || !strcmp(cmds->args[0],""))
         {
