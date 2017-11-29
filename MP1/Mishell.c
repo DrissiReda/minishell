@@ -263,6 +263,10 @@ void clean(piped** cmds)
     	}
     	free(*cmds);
 }
+void getcomp(const char* txt)
+{
+	
+}
 char *my_generator (const char *text, int state)
 {
     static int list_index, len;
@@ -273,7 +277,7 @@ char *my_generator (const char *text, int state)
         list_index = 0;
         len = strlen (text);
     }
-
+	char** words=getcomp(text);
     while (name = words[list_index])
     {
         list_index++;
