@@ -1,19 +1,4 @@
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <fcntl.h>
-#include <errno.h>
-
-#define MAX 1000
-typedef struct piped
-{
-	char** args;
-	struct piped* next;
-} piped;
-extern int errno;
+#include "Mishell.h"
 //TODO implement special args array where pipes and redirections are stored : fixed
 //TODO fix print flush error (works on correctly on gdb but not on stdout)  : fixed
 //TODO implement last command entry with '\033' '[' 'A/B/C/D'  
@@ -121,6 +106,29 @@ void cd(char* dir,char** prev) // executes cd command
         	}
         }
     }
+}
+void hist()
+{
+	char* h[]={"cat",".history"};
+	spawn_exec(STDIN_FILENO,STDOUT_FILENO,h);	
+}
+void add_hist(char* cmd,int* index)
+{
+	FILE* h;
+	if(!(h=fopen(".history","a")))
+	{
+		perror("history_add ");
+		errno=0;
+	}
+	time_t current;
+	struct tm* local;
+	current=time(NULL);
+	char buffer[100];
+	local= localtime(&current);
+	*index=*index+1;
+	strftime(buffer,100,"%d/%m/%Y %T",local);
+	fprintf(h,"%d %s %s",*index,buffer,cmd);
+	fclose(h);
 }
 int find_redir(char** args) // searchs for any redirections
 {
@@ -239,9 +247,9 @@ int fork_pipes (piped* cmds)
     }
    return spawn_exec(input,STDOUT_FILENO, current->args);
 }
-void def_cmd(piped* cmds)
+int def_cmd(piped* cmds)
 {
-    fork_pipes(cmds);
+    return fork_pipes(cmds);
 }
 void clean(piped** cmds)
 {
@@ -261,8 +269,22 @@ void clean(piped** cmds)
     	}
     	free(*cmds);
 }
+int getcount()
+{
+	char buff[MAX];
+	int count=0;
+	FILE* h=fopen(".history","r");
+	if(h==NULL)
+		return 0;
+	while(fgets(buff,MAX,h) !=NULL)
+		count++;
+	printf("Size is %d\n",count);
+	fclose(h);
+	return count;
+}
 int main(int argc,char* argv[])
 {
+	int index=getcount();
     char* buff=calloc(1,MAX);
     char* cwd=calloc(1,MAX);
     char* prevcd=NULL; 
@@ -272,6 +294,7 @@ int main(int argc,char* argv[])
     printf("%s %% ",cwd);
     while(fgets(buff,MAX,stdin)!= NULL)
     {
+    	add_hist(buff, &index);
     	flag=0;
 		if(strlen(buff)>0)
         	buff[strlen(buff)-1]=0; // remove the '\n'
@@ -302,6 +325,12 @@ int main(int argc,char* argv[])
             continue;
         }
         else
+        if(!strcmp(cmds->args[0],"history"))
+        {
+        	hist();
+        	printf("%s %%",cwd);
+        	continue;
+        }
         {
             pid_t pid;
             switch(pid=fork())
