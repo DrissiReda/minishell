@@ -109,14 +109,21 @@ void cd(char* dir,char** prev) // executes cd command
 }
 void hist()
 {
-	char* h[]={"cat",".history"};
-	spawn_exec(STDIN_FILENO,STDOUT_FILENO,h);	
+	FILE *h;
+    char c;
+    h=fopen(".history","rt");
+
+    while((c=fgetc(h))!=EOF){
+        printf("%c",c);
+    }
+
+    fclose(h);	
 }
 void add_hist(char* cmd,int* index)
 {
 	FILE* h;
-	if(!(h=fopen(".history","a")))
-	{
+	if(!(h=fopen(".history",(*index < HISTMAX)?"a" : "w")))
+	{ // overwrite if history longer than histmax
 		perror("history_add ");
 		errno=0;
 	}
@@ -125,21 +132,30 @@ void add_hist(char* cmd,int* index)
 	current=time(NULL);
 	char buffer[100];
 	local= localtime(&current);
-	*index=*index+1;
+	*index=(*index<HISTMAX)?*index+1:1;
 	strftime(buffer,100,"%d/%m/%Y %T",local);
-	fprintf(h,"%d %s %s",*index,buffer,cmd);
+	fprintf(h,"%d %s %s\n",*index,buffer,cmd);
 	fclose(h);
 }
-int find_redir(char** args) // searchs for any redirections
+node* find_redir(char** args) // searchs for all redirections
 {
+    node* ret=NULL;
+    node* current=NULL;
+    ret=calloc(1,sizeof(node));
+    ret->i=0;
+    current=ret;
     int i=0;
     while(args[i]) //while args is not null
     {
         if(!strcmp(args[i],"<")||!strcmp(args[i],">")||!strcmp(args[i],"2>"))
-            return i;
+        {
+        	current->i=i;
+        	current->next=calloc(1,sizeof(node));
+        	current=current->next;
+        }
         i++;
     }
-    return -1;
+    return ret;
 }
 void redir(int old,int new) // redirects file descriptors
 {
@@ -163,40 +179,42 @@ void do_exec(int input,int output,char** args) // executes function with custom 
 int spawn_exec (int input, int output, char** args)
 {
   pid_t pid;
-  int i=find_redir(args);
+  node* redirections=find_redir(args);
+  node* head=redirections;
   int fd;
-    if(i>0) // redirection
+    while(redirections->i && redirections->next != NULL) // redirection
     {
-        switch(args[i][0])// each case has a different first char  
+        switch(args[redirections->i][0])// each case has a different first char  
         {                 // so switch makes sense
         case '<' : // stdin
-            if((fd=open(args[i+1], O_RDONLY)) < 0)
+            if((fd=open(args[redirections->i+1], O_RDONLY)) < 0)
             {
-                perror(args[i+1]);
+                perror(args[redirections->i+1]);
                 exit(1);
             }
             redir(fd,STDIN_FILENO);
             break;
         case '>' : // stdout
-            if((fd=open(args[i+1], O_WRONLY)) < 0)
-                if((fd=creat(args[i+1], O_WRONLY)) < 0)
+            if((fd=open(args[redirections->i+1], O_WRONLY)) < 0)
+                if((fd=creat(args[redirections->i+1], O_WRONLY)) < 0)
                 {
-                    perror(args[i+1]);
+                    perror(args[redirections->i+1]);
                     exit(1);
                 }
             redir(fd,STDOUT_FILENO);
             break;
         case '2' : // stderr
-            if((fd=open(args[i+1], O_WRONLY)) <0)
-                if((fd=creat(args[i+1], O_WRONLY)) < 0)
+            if((fd=open(args[redirections->i+1], O_WRONLY)) <0)
+                if((fd=creat(args[redirections->i+1], O_WRONLY)) < 0)
                 {
-                    perror(args[i+1]);
+                    perror(args[redirections->i+1]);
                     exit(1);
                 }
             redir(fd,STDERR_FILENO);
             break;
         }
-        args[i]=NULL; // no need to remove every string, since all loops break at NULLs
+        args[redirections->i]=NULL; // no need to remove every string, since all loops break at NULLs
+  		redirections=redirections->next;
   	}                 // global cleaning will be done at the end of main's while loop iteration
   switch(pid = fork ()) // fork
   {
@@ -210,6 +228,7 @@ int spawn_exec (int input, int output, char** args)
     default :
     	waitpid(pid,NULL,0);
     }
+  clean_node(&head); // cleaning
   return pid;
 }
 /* manages forking, executes all piped
@@ -251,7 +270,7 @@ int def_cmd(piped* cmds)
 {
     return fork_pipes(cmds);
 }
-void clean(piped** cmds)
+void clean_piped(piped** cmds)
 {
 		piped* current;
     	int i=0; // used to iterate through args
@@ -269,6 +288,17 @@ void clean(piped** cmds)
     	}
     	free(*cmds);
 }
+void clean_node(node** list)
+{
+		node* current;
+    	while(*list)
+    	{
+    		current=*list;
+    		*list=(*list)->next;
+    		free(current);
+    	}
+    	free(*list);
+}
 int getcount()
 {
 	char buff[MAX];
@@ -278,7 +308,6 @@ int getcount()
 		return 0;
 	while(fgets(buff,MAX,h) !=NULL)
 		count++;
-	printf("Size is %d\n",count);
 	fclose(h);
 	return count;
 }
@@ -291,17 +320,15 @@ int main(int argc,char* argv[])
     piped* cmds;
     int flag=0; // existence of '&'
     cwd=getcwd(cwd,MAX);
-    printf("%s %% ",cwd);
-    while(fgets(buff,MAX,stdin)!= NULL)
+    sprintf(cwd,"%s %% ",cwd);
+    while((buff=readline(cwd))!= NULL)
     {
     	add_hist(buff, &index);
     	flag=0;
-		if(strlen(buff)>0)
-        	buff[strlen(buff)-1]=0; // remove the '\n'
         cmds=parse(buff,&flag);
         if(cmds->args[0]==NULL || !strcmp(cmds->args[0],""))
         {
-            printf("%s %% ",cwd);
+            //printf("%s %% ",cwd);
             continue;
         }
         else
@@ -314,21 +341,21 @@ int main(int argc,char* argv[])
         {
             cd(cmds->args[1],&prevcd);
             cwd=getcwd(cwd,MAX);
-            printf("%s %% ",cwd);
+            //printf("%s %% ",cwd);
             continue;
         }
         else
         if(!strcmp(cmds->args[0],"help"))
         {
         	helper();
-        	printf("%s %% ",cwd);
+        	//printf("%s %% ",cwd);
             continue;
         }
         else
         if(!strcmp(cmds->args[0],"history"))
         {
         	hist();
-        	printf("%s %%",cwd);
+        	//printf("%s %%",cwd);
         	continue;
         }
         {
@@ -345,15 +372,14 @@ int main(int argc,char* argv[])
             default :
                 if(!flag)
                     waitpid(pid,NULL,0);
-                //printf("%s %%",cwd);
                 break;
             }
-            printf("%s %% ",getcwd(cwd,MAX));
+            //printf("%s %% ",getcwd(cwd,MAX));
         }
-        clean(&cmds);
+        clean_piped(&cmds);
     }
     printf("\n");
-    clean(&cmds);
+    clean_piped(&cmds);
     free(buff);
     free(cwd);
 }
