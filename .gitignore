@@ -1,1 +1,16 @@
 *.o
+Qst1.c
+Qst1.c.orig
+a.out
+in
+out
+../TP2/tp2-binaires/a.out
+../TP2/tp2-binaires/in
+../TP2/tp2-binaires/niveau1
+../TP2/tp2-binaires/niveau2
+../TP2/tp2-binaires/niveau3
+../TP2/tp2-binaires/niveau4
+../TP2/tp2-binaires/niveau5
+../TP2/tp2-binaires/out
+../TP2/tp2-binaires/test4.c
+
