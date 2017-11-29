@@ -19,16 +19,20 @@ piped* parse(char* buff,int* flag) // takes care of parsing
     ret->args=(char**)calloc(1,sizeof(char*)*MAX);
     ret->next=NULL;
     piped* current=ret;
-    
-    
-    
     while(buff!=NULL && strlen(buff) && (res=strsep(&buff," ")))
     {
             switch(res[0])
             {
-            case '\0' : // replace empty strings with current directory
-            	current->args[i]=calloc(1,2);
-                strcpy(current->args[i],".");
+            case '\0' : // replace empty strings with pwd for ls
+            	if(i!=0 && !strcmp(current->args[0],"ls")) // 
+            	{
+            		current->args[i]=calloc(1,2);
+                	strcpy(current->args[i],".");
+                }
+                else // ignore
+                {
+                	i--;
+                }
                 break;
             case '&' :    // background
                 *flag=1;  // no need for a flag for each pipe
@@ -56,12 +60,17 @@ piped* parse(char* buff,int* flag) // takes care of parsing
             	current->args=(char**)calloc(1,sizeof(char*)*MAX);
             	current->next = NULL;
             	break;
-            case '\t'://ignore
+            case ' ': //ignore
             	i--;
             	break;
             case '"' :
             	res++; //get rid of the leading "
-            	sprintf(res,"%s %s",res,strsep(&buff,"\"")); 
+            	if(res[strlen(res)-1]=='\"') // one word
+            	{
+            		res[strlen(res)-1]=0;
+            	}
+            	else
+            		sprintf(res,"%s %s",res,strsep(&buff,"\"")); 
             	//no need to break we need the default
             default : // general arguments case
                 current->args[i]=calloc(1,strlen(res)+1);
@@ -340,7 +349,7 @@ int main(int argc,char* argv[])
         if(!strcmp(cmds->args[0],"cd"))
         {
             cd(cmds->args[1],&prevcd);
-            cwd=getcwd(cwd,MAX);
+            sprintf(cwd,"%s %% ",getcwd(cwd,MAX));
             //printf("%s %% ",cwd);
             continue;
         }
