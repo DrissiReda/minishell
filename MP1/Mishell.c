@@ -1,4 +1,8 @@
+
 #include "Mishell.h"
+const char *words[] = {"ls", "grep", "rm", "mkdir", "gcc", "rmdir", "touch", "cd",
+					   "make", "vim", "help","exit","gdb", "sed", "bash"};
+
 //TODO implement special args array where pipes and redirections are stored : fixed
 //TODO fix print flush error (works on correctly on gdb but not on stdout)  : fixed
 //TODO implement last command entry with '\033' '[' 'A/B/C/D'  
@@ -297,6 +301,7 @@ void clean_piped(piped** cmds)
     	}
     	free(*cmds);
 }
+
 void clean_node(node** list)
 {
 		node* current;
@@ -324,16 +329,58 @@ int main(int argc,char* argv[])
 {
 	int index=getcount();
     char* buff=calloc(1,MAX);
+
+char *my_generator (const char *text, int state)
+{
+    static int list_index, len;
+    const char *name;
+
+    if (!state)
+    {
+        list_index = 0;
+        len = strlen (text);
+    }
+
+    while (name = words[list_index])
+    {
+        list_index++;
+        if (strncmp (name, text, len) == 0) return strdup (name);
+    }
+
+    // If no names matched, then return NULL.
+    return ((char *) NULL);
+}
+
+// Custom completion function
+static char **my_completion (const char *text, int start, int end)
+{
+    // This prevents appending space to the end of the matching word
+    rl_completion_append_character = '\0';
+
+    char **matches = (char **) NULL;
+    if (start == 0)
+    {
+        matches = rl_completion_matches ((char *) text, &my_generator);
+    }
+    return matches;
+}
+int main(int argc,char* argv[])
+{
+    char* buff;
+
     char* cwd=calloc(1,MAX);
     char* prevcd=NULL; 
     piped* cmds;
     int flag=0; // existence of '&'
     cwd=getcwd(cwd,MAX);
     sprintf(cwd,"%s %% ",cwd);
-    while((buff=readline(cwd))!= NULL)
+    rl_attempted_completion_function = my_completion;
+    while(buff=readline(cwd))
     {
     	add_hist(buff, &index);
     	flag=0;
+		//if(strlen(buff)>0)
+        	//buff[strlen(buff)-1]=0; // remove the '\n'
         cmds=parse(buff,&flag);
         if(cmds->args[0]==NULL || !strcmp(cmds->args[0],""))
         {
@@ -349,9 +396,12 @@ int main(int argc,char* argv[])
         if(!strcmp(cmds->args[0],"cd"))
         {
             cd(cmds->args[1],&prevcd);
+
             sprintf(cwd,"%s %% ",getcwd(cwd,MAX));
             //printf("%s %% ",cwd);
             continue;
+
+            //continue;
         }
         else
         if(!strcmp(cmds->args[0],"help"))
