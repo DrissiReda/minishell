@@ -1,7 +1,6 @@
 
 #include "Mishell.h"
-const char *words[] = {"ls", "grep", "rm", "mkdir", "gcc", "rmdir", "touch", "cd",
-					   "make", "vim", "help","exit","gdb", "sed", "bash"};
+
 
 //TODO implement special args array where pipes and redirections are stored : fixed
 //TODO fix print flush error (works on correctly on gdb but not on stdout)  : fixed
@@ -160,7 +159,7 @@ node* find_redir(char** args) // searchs for all redirections
     int i=0;
     while(args[i]) //while args is not null
     {
-        if(!strcmp(args[i],"<")||!strcmp(args[i],">")||!strcmp(args[i],"2>"))
+        if(!strcmp(args[i],"<")||!strcmp(args[i],">")||!strcmp(args[i],"2>") || !strcmp(args[i],">>") )
         {
         	current->i=i;
         	current->next=calloc(1,sizeof(node));
@@ -208,7 +207,8 @@ int spawn_exec (int input, int output, char** args)
             redir(fd,STDIN_FILENO);
             break;
         case '>' : // stdout
-            if((fd=open(args[redirections->i+1], O_WRONLY)) < 0)
+            if((fd=open(args[redirections->i+1],(args[redirections->i][1]=='>')?	
+            			(O_WRONLY | O_APPEND):(O_WRONLY | O_CREAT | O_TRUNC) , 0644)) < 0)
                 if((fd=creat(args[redirections->i+1], O_WRONLY)) < 0)
                 {
                     perror(args[redirections->i+1]);
@@ -287,7 +287,7 @@ void clean_piped(piped** cmds)
 {
 		piped* current;
     	int i=0; // used to iterate through args
-    	while(*cmds)
+    	while(*cmds && (*cmds)->args != NULL)// null args means there has been no use 
     	{
     		current=*cmds;
     		while(current->args[i]) // cleaning memory
@@ -325,34 +325,28 @@ int getcount()
 	fclose(h);
 	return count;
 }
-int main(int argc,char* argv[])
+char* match_generator (const char *uncomplete, int state)
 {
-	int index=getcount();
-    char* buff=calloc(1,MAX);
-
-char *my_generator (const char *text, int state)
-{
-    static int list_index, len;
-    const char *name;
+    static int i, size;
+    const char *current;
 
     if (!state)
     {
-        list_index = 0;
-        len = strlen (text);
+        i = 0;
+        size = strlen (uncomplete);
     }
-
-    while (name = words[list_index])
+    while (current=dict[i])
     {
-        list_index++;
-        if (strncmp (name, text, len) == 0) return strdup (name);
+        i++;
+        //strncmp is so we only recover the written part of the uncomplete word
+        if (strncmp (current, uncomplete, size) == 0) return strdup (current);
     }
-
-    // If no names matched, then return NULL.
-    return ((char *) NULL);
+    // If no words from the dictionary matched, then return NULL.
+    return NULL;
 }
 
 // Custom completion function
-static char **my_completion (const char *text, int start, int end)
+static char **completion (const char *text, int start, int end)
 {
     // This prevents appending space to the end of the matching word
     rl_completion_append_character = '\0';
@@ -360,21 +354,23 @@ static char **my_completion (const char *text, int start, int end)
     char **matches = (char **) NULL;
     if (start == 0)
     {
-        matches = rl_completion_matches ((char *) text, &my_generator);
+        matches = rl_completion_matches ((char *) text, &match_generator);
     }
     return matches;
 }
 int main(int argc,char* argv[])
 {
     char* buff;
-
+	int index=getcount();
     char* cwd=calloc(1,MAX);
     char* prevcd=NULL; 
-    piped* cmds;
+    piped* cmds=calloc(1,sizeof(piped));
+    cmds->args=NULL;
+    cmds->next=NULL;
     int flag=0; // existence of '&'
     cwd=getcwd(cwd,MAX);
     sprintf(cwd,"%s %% ",cwd);
-    rl_attempted_completion_function = my_completion;
+    rl_attempted_completion_function = completion;
     while(buff=readline(cwd))
     {
     	add_hist(buff, &index);
@@ -436,9 +432,9 @@ int main(int argc,char* argv[])
             //printf("%s %% ",getcwd(cwd,MAX));
         }
         clean_piped(&cmds);
+        free(buff);
     }
     printf("\n");
     clean_piped(&cmds);
-    free(buff);
     free(cwd);
 }
