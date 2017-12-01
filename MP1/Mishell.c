@@ -1,8 +1,7 @@
 
 #include "Mishell.h"
-const char *words[] = {"ls", "grep", "rm", "mkdir", "gcc", "rmdir", "touch", "cd",
-					   "make", "vim", "help","exit","gdb", "sed", "bash"};
 
+char* buffer;
 //TODO implement special args array where pipes and redirections are stored : fixed
 //TODO fix print flush error (works on correctly on gdb but not on stdout)  : fixed
 //TODO implement last command entry with '\033' '[' 'A/B/C/D'  
@@ -39,7 +38,7 @@ piped* parse(char* buff,int* flag) // takes care of parsing
                 }
                 break;
             case '&' :    // background
-                *flag=1;  // no need for a flag for each pipe
+                if(*flag!=2) *flag=1;  // only set the flag if no other flag in other pipes
                 continue; // since we can only add this token to the end
             case '~':  // home variable
                 current->args[i]=calloc(1,strlen(getenv("HOME")+1));
@@ -63,6 +62,7 @@ piped* parse(char* buff,int* flag) // takes care of parsing
             	current=current->next;
             	current->args=(char**)calloc(1,sizeof(char*)*MAX);
             	current->next = NULL;
+            	if(*flag==1)*flag=2; // should produce an error if not last piped command
             	break;
             case ' ': //ignore
             	i--;
@@ -279,9 +279,15 @@ int fork_pipes (piped* cmds)
     }
    return spawn_exec(input,STDOUT_FILENO, current->args);
 }
-int def_cmd(piped* cmds)
+int def_cmd(piped* cmds,int* flag)
 {
-    return fork_pipes(cmds);
+	if(*flag==2)
+	{
+		fprintf(stderr,"Mishell: syntax error near unexpected token `|'\n");
+		return -1;
+	}
+	else
+    	return fork_pipes(cmds);
 }
 void clean_piped(piped** cmds)
 {
@@ -325,34 +331,28 @@ int getcount()
 	fclose(h);
 	return count;
 }
-int main(int argc,char* argv[])
+char* match_generator (const char *uncomplete, int state)
 {
-	int index=getcount();
-    char* buff=calloc(1,MAX);
-
-char *my_generator (const char *text, int state)
-{
-    static int list_index, len;
-    const char *name;
+    static int i, size;
+    const char *current;
 
     if (!state)
     {
-        list_index = 0;
-        len = strlen (text);
+        i = 0;
+        size = strlen (uncomplete);
     }
-
-    while (name = words[list_index])
+    while (current=dict[i])
     {
-        list_index++;
-        if (strncmp (name, text, len) == 0) return strdup (name);
+        i++;
+        //strncmp is so we only recover the written part of the uncomplete word
+        if (strncmp (current, uncomplete, size) == 0) return strdup (current);
     }
-
-    // If no names matched, then return NULL.
-    return ((char *) NULL);
+    // If no words from the dictionary matched, then return NULL.
+    return NULL;
 }
 
 // Custom completion function
-static char **my_completion (const char *text, int start, int end)
+static char **completion (const char *text, int start, int end)
 {
     // This prevents appending space to the end of the matching word
     rl_completion_append_character = '\0';
@@ -360,28 +360,52 @@ static char **my_completion (const char *text, int start, int end)
     char **matches = (char **) NULL;
     if (start == 0)
     {
-        matches = rl_completion_matches ((char *) text, &my_generator);
+        matches = rl_completion_matches ((char *) text, &match_generator);
     }
     return matches;
 }
+static char* last_command(int count, int key)
+{
+	FILE* f=fopen(".history","r");
+	fseek(f, -1, SEEK_END);// char before last one (EOF)
+	char c;
+	int i=0,size=1; // get size of the line
+	char* line=calloc(1,MAX);
+	for(i=0;i<count;i++)
+	while (c!= '\n') // find the beginning of the line
+	{
+		fseek(f, -2, SEEK_CUR);
+		c= fgetc(f);
+		size++;
+	}
+	fgets(line, size, f);
+	strsep(&line," ");//skip command number
+	strsep(&line," ");//skip date
+	strsep(&line," ");//skip seconds
+	if(line)
+	{
+		return line;
+	} 
+	return NULL;
+	
+}	
 int main(int argc,char* argv[])
 {
-    char* buff;
-
+    
+	int index=getcount();
     char* cwd=calloc(1,MAX);
     char* prevcd=NULL; 
     piped* cmds;
     int flag=0; // existence of '&'
     cwd=getcwd(cwd,MAX);
     sprintf(cwd,"%s %% ",cwd);
-    rl_attempted_completion_function = my_completion;
-    while(buff=readline(cwd))
+    rl_attempted_completion_function = completion;
+    rl_bind_keyseq("\\e[A", last_command);
+    while(buffer=readline(cwd))
     {
-    	add_hist(buff, &index);
+    	add_hist(buffer, &index);
     	flag=0;
-		//if(strlen(buff)>0)
-        	//buff[strlen(buff)-1]=0; // remove the '\n'
-        cmds=parse(buff,&flag);
+        cmds=parse(buffer,&flag);
         if(cmds->args[0]==NULL || !strcmp(cmds->args[0],""))
         {
             //printf("%s %% ",cwd);
@@ -426,11 +450,13 @@ int main(int argc,char* argv[])
                 errno=0;
                 break;
             case 0 :
-                def_cmd(cmds);
+                def_cmd(cmds,&flag);
                 exit(1);
             default :
                 if(!flag)
                     waitpid(pid,NULL,0);
+                else if (flag==1)
+                	printf("Mishel: background pid :%d\n",pid);
                 break;
             }
             //printf("%s %% ",getcwd(cwd,MAX));
@@ -439,6 +465,6 @@ int main(int argc,char* argv[])
     }
     printf("\n");
     clean_piped(&cmds);
-    free(buff);
+    free(buffer);
     free(cwd);
 }
