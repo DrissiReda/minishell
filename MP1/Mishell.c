@@ -27,8 +27,8 @@ piped* parse(char* buff,int* flag) // takes care of parsing
             switch(res[0])
             {
             case '\0' : // replace empty strings with pwd for ls
-            	if(i!=0 && !strcmp(current->args[0],"ls")) // 
-            	{
+            	if(i==1 && !strcmp(current->args[0],"ls")) //only works for first argument
+            	{										   // to avoid bugs
             		current->args[i]=calloc(1,2);
                 	strcpy(current->args[i],".");
                 }
@@ -87,8 +87,24 @@ piped* parse(char* buff,int* flag) // takes care of parsing
 }
 void cd(char* dir,char** prev) // executes cd command
 {
+	char* pwd=calloc(1,MAX);
+	if(dir != NULL)
+	{
+		if(!strcmp(dir,getcwd(pwd,MAX)))//no changing of pwd if dir is the same
+		{
+			printf("Done");
+			free(pwd);
+			return;
+		}
+	}
+	
     if(dir==NULL || !strcmp(dir,"") || !strcmp(dir,"~"))//cd to home var
     {
+    	if(!strcmp(getenv("HOME"),getcwd(pwd,MAX)))
+    	{// no changing to home if we're already there
+    		free(pwd);
+    		return;
+    	}
     	*prev=getcwd(*prev,MAX);
         if(chdir(getenv("HOME"))<0) 
         {
@@ -119,6 +135,7 @@ void cd(char* dir,char** prev) // executes cd command
         	}
         }
     }
+    free(pwd);
 }
 void hist()
 {
@@ -197,6 +214,18 @@ int spawn_exec (int input, int output, char** args)
   int fd;
     while(redirections->i && redirections->next != NULL) // redirection
     {
+    	if(args[redirections->i + 1]== NULL)
+    	{
+    		fprintf(stderr,"Mishell: syntax error near unexpected token `newline'\n");
+    		return -1;
+    	}
+    	if(args[redirections->i+1][0]=='2' || args[redirections->i+1][0]=='<' || 
+    		args[redirections->i+1][0]=='>' )
+    	{
+    		fprintf(stderr,"Mishell: syntax error near unexpected token `%c'\n",
+    			args[redirections->i+1][0]);
+    		return -1;
+    	}
         switch(args[redirections->i][0])// each case has a different first char  
         {                 // so switch makes sense
         case '<' : // stdin
@@ -293,7 +322,7 @@ void clean_piped(piped** cmds)
 {
 		piped* current;
     	int i=0; // used to iterate through args
-    	while(*cmds)
+    	while(*cmds && (*cmds)->args!=NULL)
     	{
     		current=*cmds;
     		while(current->args[i]) // cleaning memory
@@ -384,7 +413,7 @@ static char* last_command(int count, int key)
 	strsep(&line," ");//skip seconds
 	if(line)
 	{
-		return line;
+		printf("%s",line);
 	} 
 	return NULL;
 	
@@ -395,12 +424,13 @@ int main(int argc,char* argv[])
 	int index=getcount();
     char* cwd=calloc(1,MAX);
     char* prevcd=NULL; 
-    piped* cmds;
+    piped* cmds=calloc(1,sizeof(piped));
+    cmds->args=NULL;
     int flag=0; // existence of '&'
     cwd=getcwd(cwd,MAX);
     sprintf(cwd,"%s %% ",cwd);
     rl_attempted_completion_function = completion;
-    rl_bind_keyseq("\\e[A", last_command);
+    //rl_bind_keyseq("\\e[A", last_command);
     while(buffer=readline(cwd))
     {
     	add_hist(buffer, &index);
