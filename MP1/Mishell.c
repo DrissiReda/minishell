@@ -1,21 +1,7 @@
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <readline/readline.h>
-#define MAX 1000
-typedef struct piped
-{
-	char** args;
-	struct piped* next;
-} piped;
-extern int errno;
-const char *words[] = {"ls", "grep", "rm", "mkdir", "gcc", "rmdir", "touch", "cd",
-					   "make", "vim", "help","exit","gdb", "sed", "bash"};
+
+#include "Mishell.h"
+
+char* buffer;
 //TODO implement special args array where pipes and redirections are stored : fixed
 //TODO fix print flush error (works on correctly on gdb but not on stdout)  : fixed
 //TODO implement last command entry with '\033' '[' 'A/B/C/D'  
@@ -36,19 +22,23 @@ piped* parse(char* buff,int* flag) // takes care of parsing
     ret->args=(char**)calloc(1,sizeof(char*)*MAX);
     ret->next=NULL;
     piped* current=ret;
-    
-    
-    
     while(buff!=NULL && strlen(buff) && (res=strsep(&buff," ")))
     {
             switch(res[0])
             {
-            case '\0' : // replace empty strings with current directory
-            	current->args[i]=calloc(1,2);
-                strcpy(current->args[i],".");
+            case '\0' : // replace empty strings with pwd for ls
+            	if(i==1 && !strcmp(current->args[0],"ls")) //only works for first argument
+            	{										   // to avoid bugs
+            		current->args[i]=calloc(1,2);
+                	strcpy(current->args[i],".");
+                }
+                else // ignore
+                {
+                	i--;
+                }
                 break;
             case '&' :    // background
-                *flag=1;  // no need for a flag for each pipe
+                if(*flag!=2) *flag=1;  // only set the flag if no other flag in other pipes
                 continue; // since we can only add this token to the end
             case '~':  // home variable
                 current->args[i]=calloc(1,strlen(getenv("HOME")+1));
@@ -72,13 +62,19 @@ piped* parse(char* buff,int* flag) // takes care of parsing
             	current=current->next;
             	current->args=(char**)calloc(1,sizeof(char*)*MAX);
             	current->next = NULL;
+            	if(*flag==1)*flag=2; // should produce an error if not last piped command
             	break;
-            case '\t'://ignore
+            case ' ': //ignore
             	i--;
             	break;
             case '"' :
             	res++; //get rid of the leading "
-            	sprintf(res,"%s %s",res,strsep(&buff,"\"")); 
+            	if(res[strlen(res)-1]=='\"') // one word
+            	{
+            		res[strlen(res)-1]=0;
+            	}
+            	else
+            		sprintf(res,"%s %s",res,strsep(&buff,"\"")); 
             	//no need to break we need the default
             default : // general arguments case
                 current->args[i]=calloc(1,strlen(res)+1);
@@ -91,8 +87,24 @@ piped* parse(char* buff,int* flag) // takes care of parsing
 }
 void cd(char* dir,char** prev) // executes cd command
 {
+	char* pwd=calloc(1,MAX);
+	if(dir != NULL)
+	{
+		if(!strcmp(dir,getcwd(pwd,MAX)))//no changing of pwd if dir is the same
+		{
+			printf("Done");
+			free(pwd);
+			return;
+		}
+	}
+	
     if(dir==NULL || !strcmp(dir,"") || !strcmp(dir,"~"))//cd to home var
     {
+    	if(!strcmp(getenv("HOME"),getcwd(pwd,MAX)))
+    	{// no changing to home if we're already there
+    		free(pwd);
+    		return;
+    	}
     	*prev=getcwd(*prev,MAX);
         if(chdir(getenv("HOME"))<0) 
         {
@@ -123,17 +135,58 @@ void cd(char* dir,char** prev) // executes cd command
         	}
         }
     }
+    free(pwd);
 }
-int find_redir(char** args) // searchs for any redirections
+void hist()
 {
+	FILE *h;
+    char c;
+    h=fopen(".history","rt");
+
+    while((c=fgetc(h))!=EOF){
+        printf("%c",c);
+    }
+
+    fclose(h);	
+}
+void add_hist(char* cmd,int* index)
+{
+	FILE* h;
+	if(!(h=fopen(".history",(*index < HISTMAX)?"a" : "w")))
+	{ // overwrite if history longer than histmax
+		perror("history_add ");
+		errno=0;
+	}
+	time_t current;
+	struct tm* local;
+	current=time(NULL);
+	char buffer[100];
+	local= localtime(&current);
+	*index=(*index<HISTMAX)?*index+1:1;
+	strftime(buffer,100,"%d/%m/%Y %T",local);
+	fprintf(h,"%d %s %s\n",*index,buffer,cmd);
+	fclose(h);
+}
+node* find_redir(char** args) // searchs for all redirections
+{
+    node* ret=NULL;
+    node* current=NULL;
+    ret=calloc(1,sizeof(node));
+    ret->i=0;
+    current=ret;
     int i=0;
     while(args[i]) //while args is not null
     {
-        if(!strcmp(args[i],"<")||!strcmp(args[i],">")||!strcmp(args[i],"2>"))
-            return i;
+        if(!strcmp(args[i],"<")||!strcmp(args[i],">")||!strcmp(args[i],"2>")  
+        	|| !strcmp(args[i],">>") )
+        {
+        	current->i=i;
+        	current->next=calloc(1,sizeof(node));
+        	current=current->next;
+        }
         i++;
     }
-    return -1;
+    return ret;
 }
 void redir(int old,int new) // redirects file descriptors
 {
@@ -157,40 +210,55 @@ void do_exec(int input,int output,char** args) // executes function with custom 
 int spawn_exec (int input, int output, char** args)
 {
   pid_t pid;
-  int i=find_redir(args);
+  node* redirections=find_redir(args);
+  node* head=redirections;
   int fd;
-    if(i>0) // redirection
+    while(redirections->i && redirections->next != NULL) // redirection
     {
-        switch(args[i][0])// each case has a different first char  
+    	if(args[redirections->i + 1]== NULL)
+    	{
+    		fprintf(stderr,"Mishell: syntax error near unexpected token `newline'\n");
+    		return -1;
+    	}
+    	if(args[redirections->i+1][0]=='2' || args[redirections->i+1][0]=='<' || 
+    		args[redirections->i+1][0]=='>' )
+    	{
+    		fprintf(stderr,"Mishell: syntax error near unexpected token `%c'\n",
+    			args[redirections->i+1][0]);
+    		return -1;
+    	}
+        switch(args[redirections->i][0])// each case has a different first char  
         {                 // so switch makes sense
         case '<' : // stdin
-            if((fd=open(args[i+1], O_RDONLY)) < 0)
+            if((fd=open(args[redirections->i+1], O_RDONLY)) < 0)
             {
-                perror(args[i+1]);
+                perror(args[redirections->i+1]);
                 exit(1);
             }
             redir(fd,STDIN_FILENO);
             break;
         case '>' : // stdout
-            if((fd=open(args[i+1], O_WRONLY)) < 0)
-                if((fd=creat(args[i+1], O_WRONLY)) < 0)
+            if((fd=open(args[redirections->i+1],(args[redirections->i][1]=='>')
+            	?(O_WRONLY | O_APPEND):(O_WRONLY | O_CREAT | O_TRUNC) , 0644)) < 0)
+                if((fd=creat(args[redirections->i+1], O_WRONLY | O_TRUNC)) < 0)
                 {
-                    perror(args[i+1]);
+                    perror(args[redirections->i+1]);
                     exit(1);
                 }
             redir(fd,STDOUT_FILENO);
             break;
         case '2' : // stderr
-            if((fd=open(args[i+1], O_WRONLY)) <0)
-                if((fd=creat(args[i+1], O_WRONLY)) < 0)
+            if((fd=open(args[redirections->i+1], O_WRONLY | O_TRUNC)) <0)
+                if((fd=creat(args[redirections->i+1], O_WRONLY | O_TRUNC)) < 0)
                 {
-                    perror(args[i+1]);
+                    perror(args[redirections->i+1]);
                     exit(1);
                 }
             redir(fd,STDERR_FILENO);
             break;
         }
-        args[i]=NULL; // no need to remove every string, since all loops break at NULLs
+        args[redirections->i]=NULL; // no need to remove every string, since all loops break at NULLs
+  		redirections=redirections->next;
   	}                 // global cleaning will be done at the end of main's while loop iteration
   switch(pid = fork ()) // fork
   {
@@ -204,6 +272,7 @@ int spawn_exec (int input, int output, char** args)
     default :
     	waitpid(pid,NULL,0);
     }
+  clean_node(&head); // cleaning
   return pid;
 }
 /* manages forking, executes all piped
@@ -241,15 +310,21 @@ int fork_pipes (piped* cmds)
     }
    return spawn_exec(input,STDOUT_FILENO, current->args);
 }
-void def_cmd(piped* cmds)
+int def_cmd(piped* cmds,int* flag)
 {
-    fork_pipes(cmds);
+	if(*flag==2)
+	{
+		fprintf(stderr,"Mishell: syntax error near unexpected token `|'\n");
+		return -1;
+	}
+	else
+    	return fork_pipes(cmds);
 }
-void clean(piped** cmds)
+void clean_piped(piped** cmds)
 {
 		piped* current;
     	int i=0; // used to iterate through args
-    	while(*cmds)
+    	while(*cmds && (*cmds)->args!=NULL)
     	{
     		current=*cmds;
     		while(current->args[i]) // cleaning memory
@@ -263,33 +338,52 @@ void clean(piped** cmds)
     	}
     	free(*cmds);
 }
-void getcomp(const char* txt)
+
+void clean_node(node** list)
 {
-	
+		node* current;
+    	while(*list)
+    	{
+    		current=*list;
+    		*list=(*list)->next;
+    		free(current);
+    	}
+    	free(*list);
 }
-char *my_generator (const char *text, int state)
+int getcount()
 {
-    static int list_index, len;
-    const char *name;
+	char buff[MAX];
+	int count=0;
+	FILE* h=fopen(".history","r");
+	if(h==NULL)
+		return 0;
+	while(fgets(buff,MAX,h) !=NULL)
+		count++;
+	fclose(h);
+	return count;
+}
+char* match_generator (const char *uncomplete, int state)
+{
+    static int i, size;
+    const char *current;
 
     if (!state)
     {
-        list_index = 0;
-        len = strlen (text);
+        i = 0;
+        size = strlen (uncomplete);
     }
-	char** words=getcomp(text);
-    while (name = words[list_index])
+    while (current=dict[i])
     {
-        list_index++;
-        if (strncmp (name, text, len) == 0) return strdup (name);
+        i++;
+        //strncmp is so we only recover the written part of the uncomplete word
+        if (strncmp (current, uncomplete, size) == 0) return strdup (current);
     }
-
-    // If no names matched, then return NULL.
-    return ((char *) NULL);
+    // If no words from the dictionary matched, then return NULL.
+    return NULL;
 }
 
 // Custom completion function
-static char **my_completion (const char *text, int start, int end)
+static char **completion (const char *text, int start, int end)
 {
     // This prevents appending space to the end of the matching word
     rl_completion_append_character = '\0';
@@ -297,26 +391,53 @@ static char **my_completion (const char *text, int start, int end)
     char **matches = (char **) NULL;
     if (start == 0)
     {
-        matches = rl_completion_matches ((char *) text, &my_generator);
+        matches = rl_completion_matches ((char *) text, &match_generator);
     }
     return matches;
 }
+static char* last_command(int count, int key)
+{
+	FILE* f=fopen(".history","r");
+	fseek(f, -1, SEEK_END);// char before last one (EOF)
+	char c;
+	int i=0,size=1; // get size of the line
+	char* line=calloc(1,MAX);
+	for(i=0;i<count;i++)
+	while (c!= '\n') // find the beginning of the line
+	{
+		fseek(f, -2, SEEK_CUR);
+		c= fgetc(f);
+		size++;
+	}
+	fgets(line, size, f);
+	strsep(&line," ");//skip command number
+	strsep(&line," ");//skip date
+	strsep(&line," ");//skip seconds
+	if(line)
+	{
+		printf("%s",line);
+	} 
+	return NULL;
+	
+}	
 int main(int argc,char* argv[])
 {
-    char* buff;
+    
+	int index=getcount();
     char* cwd=calloc(1,MAX);
     char* prevcd=NULL; 
-    piped* cmds;
+    piped* cmds=calloc(1,sizeof(piped));
+    cmds->args=NULL;
     int flag=0; // existence of '&'
     cwd=getcwd(cwd,MAX);
     sprintf(cwd,"%s %% ",cwd);
-    rl_attempted_completion_function = my_completion;
-    while(buff=readline(cwd))
+    rl_attempted_completion_function = completion;
+    //rl_bind_keyseq("\\e[A", last_command);
+    while(buffer=readline(cwd))
     {
+    	add_hist(buffer, &index);
     	flag=0;
-		//if(strlen(buff)>0)
-        	//buff[strlen(buff)-1]=0; // remove the '\n'
-        cmds=parse(buff,&flag);
+        cmds=parse(buffer,&flag);
         if(cmds->args[0]==NULL || !strcmp(cmds->args[0],""))
         {
             //printf("%s %% ",cwd);
@@ -331,6 +452,11 @@ int main(int argc,char* argv[])
         if(!strcmp(cmds->args[0],"cd"))
         {
             cd(cmds->args[1],&prevcd);
+
+            sprintf(cwd,"%s %% ",getcwd(cwd,MAX));
+            //printf("%s %% ",cwd);
+            continue;
+
             //continue;
         }
         else
@@ -341,6 +467,12 @@ int main(int argc,char* argv[])
             continue;
         }
         else
+        if(!strcmp(cmds->args[0],"history"))
+        {
+        	hist();
+        	//printf("%s %%",cwd);
+        	continue;
+        }
         {
             pid_t pid;
             switch(pid=fork())
@@ -350,22 +482,21 @@ int main(int argc,char* argv[])
                 errno=0;
                 break;
             case 0 :
-                def_cmd(cmds);
+                def_cmd(cmds,&flag);
                 exit(1);
             default :
                 if(!flag)
                     waitpid(pid,NULL,0);
-                //printf("%s %%",cwd);
+                else if (flag==1)
+                	printf("Mishel: background pid :%d\n",pid);
                 break;
             }
             //printf("%s %% ",getcwd(cwd,MAX));
         }
-        clean(&cmds);
-        cwd=getcwd(cwd,MAX);
-        sprintf(cwd,"%s %% ",cwd);
+        clean_piped(&cmds);
     }
     printf("\n");
-    clean(&cmds);
-    free(buff);
+    clean_piped(&cmds);
+    free(buffer);
     free(cwd);
 }
