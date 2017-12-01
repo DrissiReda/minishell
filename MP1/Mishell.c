@@ -1,5 +1,9 @@
 
 #include "Mishell.h"
+<<<<<<< HEAD
+=======
+
+>>>>>>> 0034c6966b1c92e7620bf09e6d981cb8cd3b35bc
 
 char* buffer;
 //TODO implement special args array where pipes and redirections are stored : fixed
@@ -177,7 +181,7 @@ node* find_redir(char** args) // searchs for all redirections
     int i=0;
     while(args[i]) //while args is not null
     {
-        if(!strcmp(args[i],"<")||!strcmp(args[i],">")||!strcmp(args[i],"2>"))
+        if(!strcmp(args[i],"<")||!strcmp(args[i],">")||!strcmp(args[i],"2>") || !strcmp(args[i],">>") )
         {
         	current->i=i;
         	current->next=calloc(1,sizeof(node));
@@ -237,7 +241,8 @@ int spawn_exec (int input, int output, char** args)
             redir(fd,STDIN_FILENO);
             break;
         case '>' : // stdout
-            if((fd=open(args[redirections->i+1], O_WRONLY)) < 0)
+            if((fd=open(args[redirections->i+1],(args[redirections->i][1]=='>')?	
+            			(O_WRONLY | O_APPEND):(O_WRONLY | O_CREAT | O_TRUNC) , 0644)) < 0)
                 if((fd=creat(args[redirections->i+1], O_WRONLY)) < 0)
                 {
                     perror(args[redirections->i+1]);
@@ -322,7 +327,11 @@ void clean_piped(piped** cmds)
 {
 		piped* current;
     	int i=0; // used to iterate through args
+<<<<<<< HEAD
     	while(*cmds && (*cmds)->args!=NULL)
+=======
+    	while(*cmds && (*cmds)->args != NULL)// null args means there has been no use 
+>>>>>>> 0034c6966b1c92e7620bf09e6d981cb8cd3b35bc
     	{
     		current=*cmds;
     		while(current->args[i]) // cleaning memory
@@ -420,18 +429,30 @@ static char* last_command(int count, int key)
 }	
 int main(int argc,char* argv[])
 {
+<<<<<<< HEAD
     
+=======
+    char* buff;
+>>>>>>> 0034c6966b1c92e7620bf09e6d981cb8cd3b35bc
 	int index=getcount();
     char* cwd=calloc(1,MAX);
     char* prevcd=NULL; 
     piped* cmds=calloc(1,sizeof(piped));
     cmds->args=NULL;
+<<<<<<< HEAD
+=======
+    cmds->next=NULL;
+>>>>>>> 0034c6966b1c92e7620bf09e6d981cb8cd3b35bc
     int flag=0; // existence of '&'
     cwd=getcwd(cwd,MAX);
     sprintf(cwd,"%s %% ",cwd);
     rl_attempted_completion_function = completion;
+<<<<<<< HEAD
     //rl_bind_keyseq("\\e[A", last_command);
     while(buffer=readline(cwd))
+=======
+    while(buff=readline(cwd))
+>>>>>>> 0034c6966b1c92e7620bf09e6d981cb8cd3b35bc
     {
     	add_hist(buffer, &index);
     	flag=0;
@@ -492,9 +513,13 @@ int main(int argc,char* argv[])
             //printf("%s %% ",getcwd(cwd,MAX));
         }
         clean_piped(&cmds);
+        free(buff);
     }
     printf("\n");
     clean_piped(&cmds);
+<<<<<<< HEAD
     free(buffer);
+=======
+>>>>>>> 0034c6966b1c92e7620bf09e6d981cb8cd3b35bc
     free(cwd);
 }
