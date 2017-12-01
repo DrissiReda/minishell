@@ -11,6 +11,8 @@
 
 #define MAX 1000
 #define HISTMAX 500
+
+
 typedef struct piped
 {
 	char** args;
@@ -21,24 +23,28 @@ typedef struct node
 	int i;
 	struct node* next;
 }node ;
-extern int errno;
 
+extern int errno;
+const char *dict[] = {"ls", "grep", "rm", "mkdir", "gcc", "rmdir", "touch", "cd",
+					   "make", "vim", "help","exit","gdb", "sed", "bash", "history"};
+
+//builtins
 void helper();
 void cd(char* directory, char** old_directory);
 void hist();
 void add_hist(char* command, int* index);
 
-
+//parser
 piped* parse(char* buffer, int* flag);
 
-
+// input/output redirections
 node* find_redir(char** arguments);
 void redir(int oldfd, int newfd);
 void do_exec(int input_fd, int output_fd, char** arguments);
 int spawn_exec(int input_fd,int output_fd, char** arguments);
 int fork_pipes(piped* commands);
-int def_cmd(piped* commands);
+int def_cmd(piped* commands,int* flag);
 
-
+// cleaning
 void clean_piped(piped** commands);
 void clean_node(node** list);
