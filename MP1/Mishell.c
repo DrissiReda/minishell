@@ -43,6 +43,7 @@ piped* parse(char* buff,int* flag) // takes care of parsing
             case '~':  // home variable
                 current->args[i]=calloc(1,strlen(getenv("HOME")+1));
                 strcpy(current->args[i],getenv("HOME"));
+                current->args[i+1]=NULL; //last arg is a null
                 break;
             case '$': //env variable
             	if(getenv(res+1)==NULL) //proper behavior for undefined variables
@@ -54,6 +55,7 @@ piped* parse(char* buff,int* flag) // takes care of parsing
             	{
                 	current->args[i]=calloc(1,strlen(getenv(res+1))+1);
                 	strcpy(current->args[i],getenv(res+1));
+                	current->args[i+1]=NULL;
                 }
                 break;
             case '|': // pipes, create a new node in our linked list
@@ -61,6 +63,7 @@ piped* parse(char* buff,int* flag) // takes care of parsing
             	current->next=calloc(1,sizeof(piped)); //linked list manipulation
             	current=current->next;
             	current->args=(char**)calloc(1,sizeof(char*)*MAX);
+            	current->args[0]=NULL;
             	current->next = NULL;
             	if(*flag==1)*flag=2; // should produce an error if not last piped command
             	break;
@@ -79,6 +82,7 @@ piped* parse(char* buff,int* flag) // takes care of parsing
             default : // general arguments case
                 current->args[i]=calloc(1,strlen(res)+1);
                 strcpy(current->args[i],res);
+                current->args[i+1]=NULL;
                 break;
             }
         i++;
@@ -96,6 +100,29 @@ void cd(char* dir,char** prev) // executes cd command
 			free(pwd);
 			return;
 		}
+		else 
+    	{	
+    		if(!strcmp(dir,"-")) // restore previous pwd
+    		{
+    			if(*prev==NULL)
+    				fprintf(stderr,"Mishell: cd: OLDPWD not set\n");	
+    			else
+    			{
+    				char* current=getcwd(current,MAX);
+    				chdir(*prev);
+    				*prev=current;
+    			}
+    		}
+    		else // general cd case
+    		{
+    			*prev=getcwd(*prev,MAX);
+        		if(chdir(dir)<0)
+        		{
+        			perror("cd ");
+        			errno=0;
+        		}
+        	}
+    	}
 	}
 	
     if(dir==NULL || !strcmp(dir,"") || !strcmp(dir,"~"))//cd to home var
@@ -112,29 +139,6 @@ void cd(char* dir,char** prev) // executes cd command
         	errno=0;
         }
     }
-    else 
-    {
-    	if(!strcmp(dir,"-")) // restore previous pwd
-    	{
-    		if(*prev==NULL)
-    			fprintf(stderr,"Mishell: cd: OLDPWD not set\n");	
-    		else
-    		{
-    			char* current=getcwd(current,MAX);
-    			chdir(*prev);
-    			*prev=current;
-    		}
-    	}
-    	else // general cd case
-    	{
-    		*prev=getcwd(*prev,MAX);
-        	if(chdir(dir)<0)
-        	{
-        		perror("cd ");
-        		errno=0;
-        	}
-        }
-    }
     free(pwd);
 }
 void hist()
@@ -142,7 +146,7 @@ void hist()
 	FILE *h;
     char c;
     h=fopen(".history","rt");
-
+    //printing char by char, so that fgets doesn'ts miss the last line
     while((c=fgetc(h))!=EOF){
         printf("%c",c);
     }
@@ -327,7 +331,7 @@ void clean_piped(piped** cmds)
     	while(*cmds && (*cmds)->args!=NULL)
     	{
     		current=*cmds;
-    		while(current->args[i]) // cleaning memory
+    		while(current->args[i]) // cleaning the array of strings
     		{
         		free(current->args[i]);
         		i++;
@@ -494,6 +498,7 @@ int main(int argc,char* argv[])
             //printf("%s %% ",getcwd(cwd,MAX));
         }
         clean_piped(&cmds);
+        free(buffer);
     }
     printf("\n");
     clean_piped(&cmds);
