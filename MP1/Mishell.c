@@ -436,7 +436,6 @@ int main(int argc,char* argv[])
     cwd=getcwd(cwd,MAX);
     sprintf(cwd,"%s %% ",cwd);
     rl_attempted_completion_function = completion;
-    //rl_bind_keyseq("\\e[A", last_command);
     while(buffer=readline(cwd))
     {
     	if(strcmp(buffer,""))
@@ -445,7 +444,6 @@ int main(int argc,char* argv[])
         cmds=parse(buffer,&flag);
         if(cmds->args[0]==NULL || !strcmp(cmds->args[0],""))
         {
-            //printf("%s %% ",cwd);
             continue;
         }
         else
@@ -459,23 +457,18 @@ int main(int argc,char* argv[])
             cd(cmds->args[1],&prevcd);
 
             sprintf(cwd,"%s %% ",getcwd(cwd,MAX));
-            //printf("%s %% ",cwd);
             continue;
-
-            //continue;
         }
         else
         if(!strcmp(cmds->args[0],"help"))
         {
         	helper();
-        	//printf("%s %% ",cwd);
             continue;
         }
         else
         if(!strcmp(cmds->args[0],"history"))
         {
         	hist();
-        	//printf("%s %%",cwd);
         	continue;
         }
         {
@@ -496,7 +489,6 @@ int main(int argc,char* argv[])
                 	printf("Mishel: background pid :%d\n",pid);
                 break;
             }
-            //printf("%s %% ",getcwd(cwd,MAX));
         }
         clean_piped(&cmds);
         free(buffer);
