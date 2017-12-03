@@ -439,7 +439,8 @@ int main(int argc,char* argv[])
     //rl_bind_keyseq("\\e[A", last_command);
     while(buffer=readline(cwd))
     {
-    	add_hist(buffer, &index);
+    	if(strcmp(buffer,""))
+    		add_hist(buffer, &index);
     	flag=0;
         cmds=parse(buffer,&flag);
         if(cmds->args[0]==NULL || !strcmp(cmds->args[0],""))
