@@ -501,7 +501,6 @@ int main(int argc,char* argv[])
         free(buffer);
     }
     printf("\n");
-    clean_piped(&cmds);
     free(buffer);
     free(cwd);
 }
