@@ -63,15 +63,31 @@ tproc * rr(tlist * procs, tlist * ready, int * delta) {
 
 /* --Scheduler sjf-- */
 tproc * sjf(tlist * procs, tlist * ready, int * delta) {
-    /* FIXME: Random scheduler, replace by appropriate code */
-    return randomscheduler(procs, ready, delta);
+    tnode * current = ready->first; 
+    tnode * shortest =  ready->first;
+    while(current != NULL)// searching for the shortest job
+    {
+		if((current->proc->remaining) < (shortest->proc->remaining))
+		 	shortest=current;
+		current=current->next;
+	}
+    *delta = shortest->proc->remaining; //like fcfs it's executed to the end
+    return shortest->proc;
 }
 /* --Scheduler sjf-- */
 
 /* --Scheduler srtf-- */
 tproc * srtf(tlist * procs, tlist * ready, int * delta) {
-    /* FIXME: Random scheduler, replace by appropriate code */
-    return randomscheduler(procs, ready, delta);
+    tnode * current = ready->first; 
+    tnode * shortest =  ready->first;
+    while(current != NULL)// searching for the shortest job
+    {
+		if((current->proc->remaining) < (shortest->proc->remaining))
+		 	shortest=current;
+		current=current->next;
+	}
+    *delta = 1;      //we need to search after each time unit if a shorter jpb
+    return shortest->proc;//was added to the ready list
 }
 /* --Scheduler srtf-- */
 
