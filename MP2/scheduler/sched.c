@@ -43,14 +43,21 @@ tproc * randomscheduler(tlist * procs, tlist * ready, int * delta) {
 /* --Scheduler fcfs-- */
 tproc * fcfs(tlist * procs, tlist * ready, int * delta) {
     /* FIXME: Random scheduler, replace by appropriate code */
-    return randomscheduler(procs, ready, delta);
+    tnode* current=ready->first; // fcfs picks the first ready process
+    *delta=current->proc->remaining; // executes it until it's over
+    return current->proc;
 }
 /* --Scheduler fcfs-- */
 
 /* --Scheduler rr-- */
 tproc * rr(tlist * procs, tlist * ready, int * delta) {
     /* FIXME: Random scheduler, replace by appropriate code */
-    return randomscheduler(procs, ready, delta);
+    tnode * current = ready->first; // picking up the first ready process
+    tproc * moving=current->proc;   
+    del(ready,moving); // needs to reenter the list
+	add(procs,moving); // so that we can have the tourniquet behavior
+    *delta =2; //quantum of 2 (this would change from an implementation to an other)
+    return  moving;
 }
 /* --Scheduler rr-- */
 
