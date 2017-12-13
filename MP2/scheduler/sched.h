@@ -18,7 +18,8 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.  All rights reserved.
  */
-
+//quantum for rr
+#define Q 2
 /* process */
 typedef struct {
     int pid;

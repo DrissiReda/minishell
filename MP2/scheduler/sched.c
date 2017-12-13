@@ -56,7 +56,7 @@ tproc * rr(tlist * procs, tlist * ready, int * delta) {
     tproc * moving=current->proc;   
     del(ready,moving); // needs to reenter the list
 	add(procs,moving); // so that we can have the tourniquet behavior
-    *delta =2; //quantum of 2 (this would change from an implementation to an other)
+    *delta =Q; // custom quantum 
     return  moving;
 }
 /* --Scheduler rr-- */
@@ -134,7 +134,8 @@ void simulate(int max_time) {
 
             /* Ensure the scheduler has advanced at least one unit of time */
             assert(delta > 0);
-
+			if(proc->remaining == proc->length) // activated for the first time
+				stats.response+=time-proc->activation;
             /* Output task execution */
             printf("\\TaskExecution{%d}{%d}{%d}\n", proc->pid, time, time+delta);
 
@@ -149,6 +150,11 @@ void simulate(int max_time) {
             if (proc->remaining <= 0) {
                 del(&ready, proc);
                 del(&procs, proc);
+                //at the end of the execution we add the current time 
+                //line 126 removes the time it took to activate it so that in the end 
+                //we have only the time from activation to finish
+                stats.completion+=time - proc->activation;
+                stats.waiting+=time - proc->length - proc->activation;
             }
         } 
         /* If no process is ready, just advance the simulation timer */
