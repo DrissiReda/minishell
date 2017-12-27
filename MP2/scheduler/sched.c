@@ -91,6 +91,39 @@ tproc * srtf(tlist * procs, tlist * ready, int * delta) {
 }
 /* --Scheduler srtf-- */
 
+/* --Scheduler rm-- */
+tproc * rm(tlist * procs, tlist * ready, int * delta) 
+{
+ 	tnode *p=ready->first;
+	tproc *frequent=p->proc; 
+	while(p->next!=NULL) // find the shortest period
+	{	
+		p = p->next;
+		if(frequent->period > p->proc->period)
+			frequent=p->proc;	
+	 }
+	*delta =1;
+	return  frequent;
+}
+/* --Scheduler rm-- */
+
+/* --Scheduler edf-- */
+tproc * edf(tlist * procs, tlist * ready, int * delta) 
+{
+	tnode *p=ready->first;
+	tproc *earliest=p->proc;
+	while(p->next!=NULL) // find earliest deadline
+    {				
+		p = p->next;
+		if(earliest->activation+earliest->period > p->proc->activation+p->proc->period)
+			earliest=p->proc;	 
+	 }
+    *delta =1;
+    return  earliest;
+}
+/* --Scheduler edf-- */
+
+
 /* List of ready procs */
 tlist ready;
 
@@ -105,7 +138,7 @@ tstats stats = {0} ;
 
 /* display usage message */
 void usage() {
-    fail("usage: sched [fcfs, rr, sjf, srtf]\n");
+    fail("usage: sched [fcfs, rr, sjf, srtf, rm, edf]\n");
 }
 
 /* simulate a single core scheduler, from time 0 to `max_time` */
@@ -137,8 +170,11 @@ void simulate(int max_time) {
 			if(proc->remaining == proc->length) // activated for the first time
 				stats.response+=time-proc->activation;
             /* Output task execution */
-            printf("\\TaskExecution{%d}{%d}{%d}\n", proc->pid, time, time+delta);
-
+            //print in red if a task is overdue
+            if (time+delta < proc->activation + proc-> period)
+            	printf("\\TaskExecution{%d}{%d}{%d}\n", proc->pid, time, time+delta);
+			else
+				printf("\\TaskExecution[color=red]{%d}{%d}{%d}\n", proc->pid, time, time+delta);
             /* Advance time by delta */
             time += delta;
 
@@ -151,10 +187,14 @@ void simulate(int max_time) {
                 del(&ready, proc);
                 del(&procs, proc);
                 //at the end of the execution we add the current time 
-                //line 126 removes the time it took to activate it so that in the end 
-                //we have only the time from activation to finish
                 stats.completion+=time - proc->activation;
                 stats.waiting+=time - proc->length - proc->activation;
+                if(proc->period) // periodic processes need to be managed
+                {
+                	proc->activation+=proc->period;
+					proc->remaining=proc->length;
+					add(&procs,proc);
+                }
             }
         } 
         /* If no process is ready, just advance the simulation timer */
@@ -188,6 +228,12 @@ int main(int argc, char * argv[]) {
     else if (strcmp(method, "srtf") == 0) {
         scheduler = srtf;
     } 
+    else if(strcmp(method, "rm")==0) {
+    	scheduler = rm;
+    }
+    else if(strcmp(method, "edf")==0) {
+    	scheduler = edf;
+    }
     else {
         usage();
     }

@@ -26,6 +26,7 @@ typedef struct {
     int activation;
     int length;
     int remaining;
+    int period;
 } tproc;
 
 /* node in a list of process */
