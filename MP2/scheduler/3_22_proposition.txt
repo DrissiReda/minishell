@@ -1,0 +1,9 @@
+// 3.22 proposition
+int max_time = 40;
+tproc tasks[] = {
+	 //pid  //activation  //length  //remaining  //period
+    {1,     0,            3,        3,           5       },
+    {2,     0,            3,        3,           8       }
+};
+//
+
